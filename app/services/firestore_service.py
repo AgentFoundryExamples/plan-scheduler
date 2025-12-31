@@ -343,15 +343,15 @@ def delete_plan_with_specs(plan_id: str, client: firestore.Client | None = None)
     def delete_in_transaction(transaction):
         """Transactional function to delete plan and all specs atomically."""
         doc_ref = client.collection("plans").document(plan_id)
-        
+
         # Get all spec documents first
         specs_collection = doc_ref.collection("specs")
         spec_docs = specs_collection.stream(transaction=transaction)
-        
+
         # Delete all spec documents within the transaction
         for spec_doc in spec_docs:
             transaction.delete(spec_doc.reference)
-        
+
         # Delete the plan document
         transaction.delete(doc_ref)
 
@@ -366,7 +366,7 @@ def delete_plan_with_specs(plan_id: str, client: firestore.Client | None = None)
 
 
 def create_plan_with_specs(
-    plan_in: PlanIn, 
+    plan_in: PlanIn,
     client: firestore.Client | None = None,
     trigger_first_spec: bool = True,
 ) -> tuple[PlanIngestionOutcome, str]:
@@ -380,15 +380,15 @@ def create_plan_with_specs(
 
     EXECUTION TRIGGER INTEGRATION:
     When trigger_first_spec is True (default), the first spec (index 0) is created
-    with status="running" and execution metadata (execution_attempts=1, 
+    with status="running" and execution metadata (execution_attempts=1,
     last_execution_at=now). This prepares spec 0 for immediate execution triggering
     by the caller. All other specs remain "blocked" with zero attempts.
 
     TRANSACTIONAL ORDERING STRATEGY:
-    Uses Firestore transactions to ensure atomicity - all writes succeed or fail 
+    Uses Firestore transactions to ensure atomicity - all writes succeed or fail
     together, and existence checks are atomic. The caller is responsible for:
     1. Calling this function to persist plan/specs
-    2. Triggering execution for spec 0 
+    2. Triggering execution for spec 0
     3. Calling delete_plan_with_specs() if execution trigger fails
 
     This ordering ensures cleanup is possible: if trigger fails after persistence,

@@ -55,11 +55,12 @@ def valid_plan_payload():
 @pytest.fixture
 def mock_dependencies():
     """Mock all dependencies for create_plan."""
-    with patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs, patch(
-        "app.dependencies.get_cached_settings"
-    ) as mock_settings, patch("app.dependencies.get_execution_service") as mock_exec, patch(
-        "app.dependencies.get_firestore_client"
-    ) as mock_client:
+    with (
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+    ):
         # Setup default mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = False  # Default to disabled for most tests

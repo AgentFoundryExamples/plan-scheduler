@@ -77,11 +77,12 @@ def mock_spec_record():
 
 def test_create_plan_success_with_execution_enabled(valid_plan_in, mock_spec_record):
     """Test create_plan successfully creates plan and triggers execution when enabled."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = True
@@ -122,11 +123,12 @@ def test_create_plan_success_with_execution_enabled(valid_plan_in, mock_spec_rec
 
 def test_create_plan_success_with_execution_disabled(valid_plan_in):
     """Test create_plan succeeds without triggering execution when disabled."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = False
@@ -153,11 +155,12 @@ def test_create_plan_success_with_execution_disabled(valid_plan_in):
 
 def test_create_plan_idempotent_skips_execution_trigger(valid_plan_in):
     """Test create_plan skips execution trigger for idempotent ingestions."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = True
@@ -184,13 +187,13 @@ def test_create_plan_idempotent_skips_execution_trigger(valid_plan_in):
 
 def test_create_plan_cleanup_on_execution_trigger_failure(valid_plan_in, mock_spec_record, caplog):
     """Test create_plan performs cleanup when execution trigger fails."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create, patch(
-        "app.dependencies.firestore_service.delete_plan_with_specs"
-    ) as mock_delete:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+        patch("app.dependencies.firestore_service.delete_plan_with_specs") as mock_delete,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = True
@@ -227,11 +230,9 @@ def test_create_plan_cleanup_on_execution_trigger_failure(valid_plan_in, mock_sp
             record.message for record in caplog.records if record.levelname == "ERROR"
         ]
         assert any("Execution trigger failed" in msg for msg in error_messages)
-        
+
         # Verify cleanup completion logging (at INFO level)
-        info_messages = [
-            record.message for record in caplog.records if record.levelname == "INFO"
-        ]
+        info_messages = [record.message for record in caplog.records if record.levelname == "INFO"]
         assert any("Cleanup completed" in msg for msg in info_messages)
 
 
@@ -239,13 +240,13 @@ def test_create_plan_logs_cleanup_failure_but_raises_original_error(
     valid_plan_in, mock_spec_record, caplog
 ):
     """Test create_plan logs cleanup failure but raises original error."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create, patch(
-        "app.dependencies.firestore_service.delete_plan_with_specs"
-    ) as mock_delete:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+        patch("app.dependencies.firestore_service.delete_plan_with_specs") as mock_delete,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = True
@@ -285,13 +286,13 @@ def test_create_plan_logs_cleanup_failure_but_raises_original_error(
 
 def test_create_plan_handles_spec_not_found_after_creation(valid_plan_in):
     """Test create_plan handles case where spec 0 is not found after creation."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create, patch(
-        "app.dependencies.firestore_service.delete_plan_with_specs"
-    ) as mock_delete:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+        patch("app.dependencies.firestore_service.delete_plan_with_specs") as mock_delete,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = True
@@ -322,13 +323,13 @@ def test_create_plan_handles_spec_not_found_after_creation(valid_plan_in):
 
 def test_create_plan_propagates_conflict_error(valid_plan_in):
     """Test create_plan propagates PlanConflictError without cleanup."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create, patch(
-        "app.dependencies.firestore_service.delete_plan_with_specs"
-    ) as mock_delete:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+        patch("app.dependencies.firestore_service.delete_plan_with_specs") as mock_delete,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = True
@@ -354,13 +355,13 @@ def test_create_plan_propagates_conflict_error(valid_plan_in):
 
 def test_create_plan_propagates_firestore_operation_error(valid_plan_in):
     """Test create_plan propagates FirestoreOperationError without cleanup."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create, patch(
-        "app.dependencies.firestore_service.delete_plan_with_specs"
-    ) as mock_delete:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+        patch("app.dependencies.firestore_service.delete_plan_with_specs") as mock_delete,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = True
@@ -384,11 +385,12 @@ def test_create_plan_propagates_firestore_operation_error(valid_plan_in):
 
 def test_create_plan_logs_execution_trigger_attempt(valid_plan_in, mock_spec_record, caplog):
     """Test create_plan logs execution trigger attempt."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = True
@@ -419,11 +421,12 @@ def test_create_plan_logs_execution_trigger_attempt(valid_plan_in, mock_spec_rec
 
 def test_create_plan_logs_execution_disabled_skip(valid_plan_in, caplog):
     """Test create_plan logs skip message when execution is disabled."""
-    with patch("app.dependencies.get_cached_settings") as mock_settings, patch(
-        "app.dependencies.get_execution_service"
-    ) as mock_exec_service, patch("app.dependencies.get_firestore_client") as mock_client, patch(
-        "app.dependencies.firestore_service.create_plan_with_specs"
-    ) as mock_create:
+    with (
+        patch("app.dependencies.get_cached_settings") as mock_settings,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
+    ):
         # Setup mocks
         settings = MagicMock()
         settings.EXECUTION_ENABLED = False

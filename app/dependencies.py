@@ -109,9 +109,7 @@ def create_plan(plan_in: PlanIn) -> tuple[PlanIngestionOutcome, str]:
     # Step 2: For idempotent ingestions, skip execution trigger
     # (plan was already processed on original ingestion)
     if outcome == PlanIngestionOutcome.IDENTICAL:
-        logger.info(
-            f"Skipping execution trigger for idempotent ingestion of plan {plan_id}"
-        )
+        logger.info(f"Skipping execution trigger for idempotent ingestion of plan {plan_id}")
         return outcome, plan_id
 
     # Step 3: For new plans, attempt to trigger execution for spec 0
@@ -124,15 +122,18 @@ def create_plan(plan_in: PlanIn) -> tuple[PlanIngestionOutcome, str]:
                 extra={"plan_id": plan_id, "spec_index": 0},
             )
             # Get spec 0 data for triggering (we just created it)
-            spec_doc = client.collection("plans").document(plan_id).collection("specs").document("0").get()
+            spec_doc = (
+                client.collection("plans").document(plan_id).collection("specs").document("0").get()
+            )
             if not spec_doc.exists:
                 raise firestore_service.FirestoreOperationError(
                     f"Spec 0 not found after creation for plan {plan_id}"
                 )
-            
+
             from app.models.plan import SpecRecord
+
             spec_data = SpecRecord(**spec_doc.to_dict())
-            
+
             execution_service.trigger_spec_execution(
                 plan_id=plan_id,
                 spec_index=0,
