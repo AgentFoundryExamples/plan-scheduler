@@ -441,6 +441,11 @@ The Firestore service provides clear, actionable error messages:
 
 ## API Endpoints
 
+**Interactive API Documentation:** The service provides auto-generated API documentation via FastAPI's built-in OpenAPI support:
+- **Swagger UI**: http://localhost:8080/docs (interactive API explorer)
+- **ReDoc**: http://localhost:8080/redoc (alternative documentation view)
+- **OpenAPI Schema**: http://localhost:8080/openapi.json (machine-readable specification)
+
 ### Health Check
 
 **GET /health**
@@ -459,6 +464,8 @@ Response:
 **POST /plans**
 
 Creates a new plan with specifications and persists it to Firestore. This endpoint implements idempotent ingestion behavior to ensure duplicate requests are handled gracefully.
+
+**Authentication:** This endpoint is currently **public** and does not require authentication. For production deployments, consider implementing authentication (e.g., API keys, JWT tokens, or Cloud Run IAM authentication) based on your security requirements.
 
 #### Request Body
 
