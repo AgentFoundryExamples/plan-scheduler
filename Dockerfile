@@ -4,10 +4,6 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy dependency files first (better layer caching)
 COPY pyproject.toml poetry.lock ./
 
@@ -16,7 +12,7 @@ COPY pyproject.toml poetry.lock ./
 RUN pip install --no-cache-dir \
     fastapi==0.115.14 \
     uvicorn[standard]==0.34.3 \
-    pydantic==2.10.5 \
+    pydantic==2.12.5 \
     pydantic-settings==2.12.0 \
     python-json-logger==3.3.0 \
     google-cloud-firestore==2.22.0
