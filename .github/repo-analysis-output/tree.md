@@ -13,5 +13,22 @@
     └── tree.md
   └── workflows
     └── af_maintenance.yml
+├── app
+  ├── api
+    ├── __init__.py
+    └── health.py
+  ├── __init__.py
+  ├── config.py
+  ├── dependencies.py
+  └── main.py
+├── tests
+  ├── __init__.py
+  ├── test_config.py
+  ├── test_health.py
+  └── test_logging.py
+├── .env.example
+├── .gitignore
 ├── LICENSE
+├── poetry.lock
+├── pyproject.toml
 └── README.md

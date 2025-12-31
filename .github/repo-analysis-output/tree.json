@@ -63,8 +63,82 @@
       ]
     },
     {
+      "type": "directory",
+      "name": "app",
+      "children": [
+        {
+          "type": "directory",
+          "name": "api",
+          "children": [
+            {
+              "type": "file",
+              "name": "__init__.py"
+            },
+            {
+              "type": "file",
+              "name": "health.py"
+            }
+          ]
+        },
+        {
+          "type": "file",
+          "name": "__init__.py"
+        },
+        {
+          "type": "file",
+          "name": "config.py"
+        },
+        {
+          "type": "file",
+          "name": "dependencies.py"
+        },
+        {
+          "type": "file",
+          "name": "main.py"
+        }
+      ]
+    },
+    {
+      "type": "directory",
+      "name": "tests",
+      "children": [
+        {
+          "type": "file",
+          "name": "__init__.py"
+        },
+        {
+          "type": "file",
+          "name": "test_config.py"
+        },
+        {
+          "type": "file",
+          "name": "test_health.py"
+        },
+        {
+          "type": "file",
+          "name": "test_logging.py"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "name": ".env.example"
+    },
+    {
+      "type": "file",
+      "name": ".gitignore"
+    },
+    {
       "type": "file",
       "name": "LICENSE"
+    },
+    {
+      "type": "file",
+      "name": "poetry.lock"
+    },
+    {
+      "type": "file",
+      "name": "pyproject.toml"
     },
     {
       "type": "file",
