@@ -4,7 +4,7 @@ Heuristic summaries of source files based on filenames, extensions, and paths.
 
 Schema Version: 2.0
 
-Total files: 24
+Total files: 27
 
 ## app/__init__.py
 **Language:** Python  
@@ -42,6 +42,15 @@ Total files: 24
 **LOC:** 131  
 **TODOs/FIXMEs:** 0  
 
+## app/api/pubsub.py
+**Language:** Python  
+**Role:** implementation  
+**Role Justification:** general implementation file (default classification)  
+**Summary:** Python module for pubsub  
+**Size:** 10.26 KB  
+**LOC:** 238  
+**TODOs/FIXMEs:** 0  
+
 ## app/config.py
 **Language:** Python  
 **Role:** configuration  
@@ -65,8 +74,8 @@ Total files: 24
 **Role:** entry-point  
 **Role Justification:** common entry point name 'main'  
 **Summary:** Python main entry point (role: entry-point)  
-**Size:** 4.33 KB  
-**LOC:** 86  
+**Size:** 4.38 KB  
+**LOC:** 87  
 **TODOs/FIXMEs:** 0  
 
 ## app/models/__init__.py
@@ -119,8 +128,8 @@ Total files: 24
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for firestore service  
-**Size:** 20.51 KB  
-**LOC:** 378  
+**Size:** 33.28 KB  
+**LOC:** 641  
 **TODOs/FIXMEs:** 0  
 
 ## tests/__init__.py
@@ -213,6 +222,15 @@ Total files: 24
 **LOC:** 425  
 **TODOs/FIXMEs:** 0  
 
+## tests/test_pubsub_api.py
+**Language:** Python  
+**Role:** test  
+**Role Justification:** filename starts with 'test_'  
+**Summary:** Python test file (role: test)  
+**Size:** 15.39 KB  
+**LOC:** 376  
+**TODOs/FIXMEs:** 0  
+
 ## tests/test_pubsub_models.py
 **Language:** Python  
 **Role:** test  
@@ -220,4 +238,13 @@ Total files: 24
 **Summary:** Python test file (role: test)  
 **Size:** 18.79 KB  
 **LOC:** 359  
+**TODOs/FIXMEs:** 0  
+
+## tests/test_spec_status_update.py
+**Language:** Python  
+**Role:** test  
+**Role Justification:** filename starts with 'test_'  
+**Summary:** Python test file (role: test)  
+**Size:** 6.17 KB  
+**LOC:** 119  
 **TODOs/FIXMEs:** 0  

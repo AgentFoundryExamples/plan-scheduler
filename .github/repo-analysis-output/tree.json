@@ -89,6 +89,10 @@
             {
               "type": "file",
               "name": "plans.py"
+            },
+            {
+              "type": "file",
+              "name": "pubsub.py"
             }
           ]
         },
@@ -196,7 +200,15 @@
         },
         {
           "type": "file",
+          "name": "test_pubsub_api.py"
+        },
+        {
+          "type": "file",
           "name": "test_pubsub_models.py"
+        },
+        {
+          "type": "file",
+          "name": "test_spec_status_update.py"
         }
       ]
     },

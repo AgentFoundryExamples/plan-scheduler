@@ -46,6 +46,25 @@
       }
     },
     {
+      "id": "app/api/pubsub.py",
+      "path": "app/api/pubsub.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "logging",
+          "secrets"
+        ],
+        "third-party": [
+          "fastapi.APIRouter",
+          "fastapi.HTTPException",
+          "fastapi.Header",
+          "fastapi.Response",
+          "fastapi.status",
+          "pydantic.ValidationError"
+        ]
+      }
+    },
+    {
       "id": "app/config.py",
       "path": "app/config.py",
       "type": "file",
@@ -330,6 +349,26 @@
       }
     },
     {
+      "id": "tests/test_pubsub_api.py",
+      "path": "tests/test_pubsub_api.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "base64",
+          "datetime.UTC",
+          "datetime.datetime",
+          "json",
+          "unittest.mock.MagicMock",
+          "unittest.mock.patch",
+          "uuid"
+        ],
+        "third-party": [
+          "fastapi.testclient.TestClient",
+          "pytest"
+        ]
+      }
+    },
+    {
       "id": "tests/test_pubsub_models.py",
       "path": "tests/test_pubsub_models.py",
       "type": "file",
@@ -343,6 +382,22 @@
         ],
         "third-party": [
           "pydantic.ValidationError",
+          "pytest"
+        ]
+      }
+    },
+    {
+      "id": "tests/test_spec_status_update.py",
+      "path": "tests/test_spec_status_update.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "unittest.mock.MagicMock",
+          "unittest.mock.patch",
+          "uuid"
+        ],
+        "third-party": [
+          "google.api_core.exceptions",
           "pytest"
         ]
       }
@@ -360,6 +415,26 @@
     {
       "source": "app/api/plans.py",
       "target": "app/dependencies.py"
+    },
+    {
+      "source": "app/api/pubsub.py",
+      "target": "app/config.py"
+    },
+    {
+      "source": "app/api/pubsub.py",
+      "target": "app/models/pubsub.py"
+    },
+    {
+      "source": "app/api/pubsub.py",
+      "target": "app/services/execution_service.py"
+    },
+    {
+      "source": "app/api/pubsub.py",
+      "target": "app/services/firestore_service.py"
+    },
+    {
+      "source": "app/api/pubsub.py",
+      "target": "app/models/plan.py"
     },
     {
       "source": "app/dependencies.py",
@@ -384,6 +459,10 @@
     {
       "source": "app/main.py",
       "target": "app/api/plans.py"
+    },
+    {
+      "source": "app/main.py",
+      "target": "app/api/pubsub.py"
     },
     {
       "source": "app/main.py",
@@ -474,8 +553,24 @@
       "target": "app/models/plan.py"
     },
     {
+      "source": "tests/test_pubsub_api.py",
+      "target": "app/main.py"
+    },
+    {
+      "source": "tests/test_pubsub_api.py",
+      "target": "app/services/firestore_service.py"
+    },
+    {
+      "source": "tests/test_pubsub_api.py",
+      "target": "app/models/plan.py"
+    },
+    {
       "source": "tests/test_pubsub_models.py",
       "target": "app/models/pubsub.py"
+    },
+    {
+      "source": "tests/test_spec_status_update.py",
+      "target": "app/services/firestore_service.py"
     }
   ],
   "external_dependencies_summary": {
@@ -490,6 +585,7 @@
       "json",
       "logging",
       "os",
+      "secrets",
       "sys",
       "typing.Any",
       "unittest.mock.MagicMock",
@@ -502,6 +598,7 @@
       "fastapi.APIRouter",
       "fastapi.FastAPI",
       "fastapi.HTTPException",
+      "fastapi.Header",
       "fastapi.Response",
       "fastapi.status",
       "fastapi.testclient.TestClient",
@@ -518,7 +615,7 @@
       "pytest",
       "pythonjsonlogger.json.JsonFormatter"
     ],
-    "stdlib_count": 17,
-    "third-party_count": 18
+    "stdlib_count": 18,
+    "third-party_count": 19
   }
 }
