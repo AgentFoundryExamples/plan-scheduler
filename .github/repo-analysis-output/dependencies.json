@@ -30,6 +30,22 @@
       }
     },
     {
+      "id": "app/api/plans.py",
+      "path": "app/api/plans.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "logging"
+        ],
+        "third-party": [
+          "fastapi.APIRouter",
+          "fastapi.HTTPException",
+          "fastapi.Response",
+          "fastapi.status"
+        ]
+      }
+    },
+    {
       "id": "app/config.py",
       "path": "app/config.py",
       "type": "file",
@@ -214,9 +230,36 @@
           "pytest"
         ]
       }
+    },
+    {
+      "id": "tests/test_plans_api.py",
+      "path": "tests/test_plans_api.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "unittest.mock.patch",
+          "uuid"
+        ],
+        "third-party": [
+          "fastapi.testclient.TestClient",
+          "pytest"
+        ]
+      }
     }
   ],
   "edges": [
+    {
+      "source": "app/api/plans.py",
+      "target": "app/models/plan.py"
+    },
+    {
+      "source": "app/api/plans.py",
+      "target": "app/services/firestore_service.py"
+    },
+    {
+      "source": "app/api/plans.py",
+      "target": "app/dependencies.py"
+    },
     {
       "source": "app/dependencies.py",
       "target": "app/config.py"
@@ -232,6 +275,10 @@
     {
       "source": "app/main.py",
       "target": "app/api/health.py"
+    },
+    {
+      "source": "app/main.py",
+      "target": "app/api/plans.py"
     },
     {
       "source": "app/main.py",
@@ -272,6 +319,14 @@
     {
       "source": "tests/test_plan_models.py",
       "target": "app/models/plan.py"
+    },
+    {
+      "source": "tests/test_plans_api.py",
+      "target": "app/main.py"
+    },
+    {
+      "source": "tests/test_plans_api.py",
+      "target": "app/services/firestore_service.py"
     }
   ],
   "external_dependencies_summary": {
@@ -296,6 +351,9 @@
     "third-party": [
       "fastapi.APIRouter",
       "fastapi.FastAPI",
+      "fastapi.HTTPException",
+      "fastapi.Response",
+      "fastapi.status",
       "fastapi.testclient.TestClient",
       "google.api_core.exceptions",
       "google.auth.exceptions",
@@ -311,6 +369,6 @@
       "pythonjsonlogger.json.JsonFormatter"
     ],
     "stdlib_count": 16,
-    "third-party_count": 15
+    "third-party_count": 18
   }
 }

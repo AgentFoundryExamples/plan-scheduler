@@ -8,10 +8,10 @@ Includes classification of external dependencies as stdlib vs third-party.
 
 ## Statistics
 
-- **Total files**: 16
-- **Intra-repo dependencies**: 14
+- **Total files**: 18
+- **Intra-repo dependencies**: 20
 - **External stdlib dependencies**: 16
-- **External third-party dependencies**: 15
+- **External third-party dependencies**: 18
 
 ## External Dependencies
 
@@ -38,10 +38,13 @@ Total: 16 unique modules
 
 ### Third-Party Packages
 
-Total: 15 unique packages
+Total: 18 unique packages
 
 - `fastapi.APIRouter`
 - `fastapi.FastAPI`
+- `fastapi.HTTPException`
+- `fastapi.Response`
+- `fastapi.status`
 - `fastapi.testclient.TestClient`
 - `google.api_core.exceptions`
 - `google.auth.exceptions`
@@ -58,20 +61,23 @@ Total: 15 unique packages
 
 ## Most Depended Upon Files (Intra-Repo)
 
-- `app/models/plan.py` (5 dependents)
+- `app/models/plan.py` (6 dependents)
+- `app/services/firestore_service.py` (4 dependents)
 - `app/config.py` (4 dependents)
-- `app/services/firestore_service.py` (2 dependents)
-- `app/main.py` (2 dependents)
+- `app/main.py` (3 dependents)
+- `app/dependencies.py` (1 dependents)
 - `app/api/health.py` (1 dependents)
+- `app/api/plans.py` (1 dependents)
 
 ## Files with Most Dependencies (Intra-Repo)
 
+- `app/api/plans.py` (3 dependencies)
 - `app/dependencies.py` (3 dependencies)
-- `app/main.py` (2 dependencies)
+- `app/main.py` (3 dependencies)
 - `app/services/firestore_service.py` (2 dependencies)
 - `tests/test_firestore_service.py` (2 dependencies)
+- `tests/test_plans_api.py` (2 dependencies)
 - `app/models/__init__.py` (1 dependencies)
 - `tests/test_config.py` (1 dependencies)
 - `tests/test_health.py` (1 dependencies)
 - `tests/test_logging.py` (1 dependencies)
-- `tests/test_plan_models.py` (1 dependencies)

@@ -18,7 +18,8 @@
 ├── app
   ├── api
     ├── __init__.py
-    └── health.py
+    ├── health.py
+    └── plans.py
   ├── models
     ├── __init__.py
     ├── plan.py
@@ -36,7 +37,8 @@
   ├── test_firestore_service.py
   ├── test_health.py
   ├── test_logging.py
-  └── test_plan_models.py
+  ├── test_plan_models.py
+  └── test_plans_api.py
 ├── .env.example
 ├── .gitignore
 ├── .pre-commit-config.yaml

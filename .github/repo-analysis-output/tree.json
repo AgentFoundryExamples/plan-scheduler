@@ -85,6 +85,10 @@
             {
               "type": "file",
               "name": "health.py"
+            },
+            {
+              "type": "file",
+              "name": "plans.py"
             }
           ]
         },
@@ -165,6 +169,10 @@
         {
           "type": "file",
           "name": "test_plan_models.py"
+        },
+        {
+          "type": "file",
+          "name": "test_plans_api.py"
         }
       ]
     },
