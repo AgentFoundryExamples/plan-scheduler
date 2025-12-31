@@ -1,0 +1,47 @@
+# Pre-commit hooks configuration
+# This file defines optional code quality checks that run before commits
+#
+# To enable pre-commit hooks:
+#   1. Install pre-commit: poetry add --group dev pre-commit
+#   2. Install hooks: make pre-commit-install (or: poetry run pre-commit install)
+#   3. Run manually: make pre-commit-run (or: poetry run pre-commit run --all-files)
+#
+# To disable temporarily:
+#   - Skip hooks for a single commit: git commit --no-verify
+#   - Uninstall hooks: poetry run pre-commit uninstall
+#
+# Note: Pre-commit hooks are OPTIONAL. Contributors can commit without them.
+# The CI/CD pipeline should enforce code quality standards independently.
+
+repos:
+  # Black - Python code formatter
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3.12
+        args: ['--line-length=100']
+
+  # Ruff - Fast Python linter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.5
+    hooks:
+      - id: ruff
+        args: ['--fix', '--exit-non-zero-on-fix']
+        language_version: python3.12
+
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--unsafe']  # Allow custom YAML tags
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: check-json
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
