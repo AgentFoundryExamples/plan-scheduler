@@ -62,6 +62,9 @@ from app.models.plan import PlanIn, create_initial_plan_record, create_initial_s
 
 logger = logging.getLogger(__name__)
 
+# Constants for execution metadata initialization
+INITIAL_EXECUTION_ATTEMPT_COUNT = 1
+
 
 class FirestoreConfigurationError(Exception):
     """Raised when Firestore configuration is invalid or missing."""
@@ -316,8 +319,60 @@ def _check_plan_exists(
         raise FirestoreOperationError(error_msg) from e
 
 
+def delete_plan_with_specs(plan_id: str, client: firestore.Client | None = None) -> None:
+    """
+    Delete a plan document and all its specs subcollection from Firestore.
+
+    This function is used for cleanup/rollback when plan ingestion partially succeeds
+    but subsequent operations (like execution triggering) fail. It ensures that
+    failed ingestions don't leave partial data in Firestore.
+
+    CLEANUP STRATEGY:
+    Uses batch operations instead of transactions to avoid read-before-write
+    limitations. First reads all spec documents, then deletes them along with
+    the plan document in a single batch. While not strictly transactional,
+    this approach is suitable for cleanup scenarios where partial deletion
+    is acceptable (the plan will be recreated on retry anyway).
+
+    Args:
+        plan_id: The plan ID to delete
+        client: Optional Firestore client (uses get_client() if not provided)
+
+    Raises:
+        FirestoreOperationError: When Firestore operation fails
+    """
+    if client is None:
+        client = get_client()
+
+    try:
+        # Read all spec documents first (outside batch)
+        doc_ref = client.collection("plans").document(plan_id)
+        specs_collection = doc_ref.collection("specs")
+        spec_docs = list(specs_collection.stream())
+
+        # Use batch to delete all documents
+        batch = client.batch()
+
+        # Delete all spec documents
+        for spec_doc in spec_docs:
+            batch.delete(spec_doc.reference)
+
+        # Delete the plan document
+        batch.delete(doc_ref)
+
+        # Commit the batch
+        batch.commit()
+        logger.info(f"Deleted plan {plan_id} with all specs for cleanup")
+    except gcp_exceptions.GoogleAPICallError as e:
+        error_msg = f"Firestore API error deleting plan {plan_id}: {str(e)}"
+        logger.error(error_msg)
+        raise FirestoreOperationError(error_msg) from e
+
+
 def create_plan_with_specs(
-    plan_in: PlanIn, client: firestore.Client | None = None
+    plan_in: PlanIn,
+    client: firestore.Client | None = None,
+    trigger_first_spec: bool = True,
 ) -> tuple[PlanIngestionOutcome, str]:
     """
     Create a plan document with specs subcollection in Firestore.
@@ -327,16 +382,31 @@ def create_plan_with_specs(
     - If plan exists with identical payload, returns idempotent success
     - If plan exists with different payload, raises conflict error
 
-    The first spec (index 0) starts as "running", all others as "blocked".
+    EXECUTION TRIGGER INTEGRATION:
+    When trigger_first_spec is True (default), the first spec (index 0) is created
+    with status="running" and execution metadata (execution_attempts=
+    INITIAL_EXECUTION_ATTEMPT_COUNT, last_execution_at=now). This prepares spec 0
+    for immediate execution triggering by the caller. All other specs remain
+    "blocked" with zero attempts.
+
+    TRANSACTIONAL ORDERING STRATEGY:
+    Uses Firestore transactions to ensure atomicity - all writes succeed or fail
+    together, and existence checks are atomic. The caller is responsible for:
+    1. Calling this function to persist plan/specs
+    2. Triggering execution for spec 0
+    3. Calling delete_plan_with_specs() if execution trigger fails
+
+    This ordering ensures cleanup is possible: if trigger fails after persistence,
+    the caller can delete all docs. Plan IDs are scoped to avoid interference
+    between concurrent ingestions.
+
     Plan metadata includes: overall_status="running", total_specs, completed_specs=0,
     current_spec_index=0, last_event_at, raw_request, and timestamps.
-
-    Uses transactions to ensure atomicity and prevent race conditions -
-    all writes succeed or fail together, and existence checks are atomic.
 
     Args:
         plan_in: PlanIn request payload
         client: Optional Firestore client (uses get_client() if not provided)
+        trigger_first_spec: If True, set spec 0 metadata for execution (default: True)
 
     Returns:
         Tuple of (outcome, plan_id)
@@ -430,6 +500,12 @@ def create_plan_with_specs(
             spec_record = create_initial_spec_record(
                 spec_in, spec_index=idx, status=status, now=now
             )
+
+            # For spec 0 when trigger_first_spec is True, set execution metadata
+            # to indicate it's ready for immediate execution trigger
+            if idx == 0 and trigger_first_spec:
+                spec_record.execution_attempts = INITIAL_EXECUTION_ATTEMPT_COUNT
+                spec_record.last_execution_at = now
 
             # Use string index as document ID
             spec_doc_ref = doc_ref.collection("specs").document(str(idx))

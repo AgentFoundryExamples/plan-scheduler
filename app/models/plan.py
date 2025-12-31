@@ -143,16 +143,14 @@ class SpecRecord(BaseModel):
     execution_attempts: int = Field(
         default=0,
         description=(
-            "Number of times execution has been triggered "
-            "(updated by trigger_spec_execution)"
+            "Number of times execution has been triggered " "(updated by trigger_spec_execution)"
         ),
         ge=0,
     )
     last_execution_at: datetime | None = Field(
         default=None,
         description=(
-            "Timestamp of most recent execution trigger "
-            "(updated by trigger_spec_execution, UTC)"
+            "Timestamp of most recent execution trigger " "(updated by trigger_spec_execution, UTC)"
         ),
     )
     history: list[dict[str, Any]] = Field(
