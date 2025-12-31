@@ -395,3 +395,224 @@ def test_create_plan_logs_firestore_error(client, valid_plan_payload, caplog):
         # Check that logs contain error information
         log_messages = [record.message for record in caplog.records]
         assert any("Plan ingestion failed due to Firestore error" in msg for msg in log_messages)
+
+
+# Tests for execution triggering behavior
+
+
+def test_create_plan_triggers_execution_for_spec_0_only(client, valid_plan_payload):
+    """Test that POST /plans triggers execution only for spec 0, not for later specs."""
+    with (
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client"),
+    ):
+        # Setup mock execution service
+        exec_service = MagicMock()
+        mock_exec_service.return_value = exec_service
+
+        # Setup mock Firestore service to return CREATED
+        mock_create_fs.return_value = (PlanIngestionOutcome.CREATED, valid_plan_payload["id"])
+
+        # Make request
+        response = client.post("/plans", json=valid_plan_payload)
+
+        # Verify response
+        assert response.status_code == 201
+
+        # Verify trigger_spec_execution was called exactly once
+        exec_service.trigger_spec_execution.assert_called_once()
+
+        # Verify it was called for spec 0 only
+        call_args = exec_service.trigger_spec_execution.call_args
+        assert call_args[1]["plan_id"] == valid_plan_payload["id"]
+        assert call_args[1]["spec_index"] == 0
+
+        # Verify spec_data has running status
+        spec_data = call_args[1]["spec_data"]
+        assert spec_data.status == "running"
+        assert spec_data.spec_index == 0
+
+
+def test_create_plan_skips_execution_trigger_for_idempotent_ingestion(client, valid_plan_payload):
+    """Test that idempotent ingestions skip execution triggering."""
+    with (
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client"),
+    ):
+        # Setup mock execution service
+        exec_service = MagicMock()
+        mock_exec_service.return_value = exec_service
+
+        # Setup mock Firestore service to return IDENTICAL (idempotent)
+        mock_create_fs.return_value = (
+            PlanIngestionOutcome.IDENTICAL,
+            valid_plan_payload["id"],
+        )
+
+        # Make request
+        response = client.post("/plans", json=valid_plan_payload)
+
+        # Verify response
+        assert response.status_code == 200
+
+        # Verify trigger_spec_execution was NOT called for idempotent ingestion
+        exec_service.trigger_spec_execution.assert_not_called()
+
+
+def test_create_plan_trigger_exception_causes_cleanup_and_error(client, valid_plan_payload):
+    """Test that trigger_spec_execution exception causes plan cleanup and API error."""
+    with (
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
+        patch("app.dependencies.firestore_service.delete_plan_with_specs") as mock_delete,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+    ):
+        # Setup mock execution service to raise exception
+        exec_service = MagicMock()
+        exec_service.trigger_spec_execution.side_effect = RuntimeError("Execution trigger failed")
+        mock_exec_service.return_value = exec_service
+
+        # Setup mock Firestore service to return CREATED
+        mock_create_fs.return_value = (PlanIngestionOutcome.CREATED, valid_plan_payload["id"])
+
+        # Make request - should fail
+        response = client.post("/plans", json=valid_plan_payload)
+
+        # Verify response is 500 error
+        assert response.status_code == 500
+        data = response.json()
+        assert data["detail"] == "Internal server error"
+
+        # Verify cleanup was called with correct client reference
+        mock_delete.assert_called_once_with(
+            valid_plan_payload["id"], client=mock_client.return_value
+        )
+
+        # Verify that cleanup was effective - mock_delete being called implies
+        # the cleanup process ran (no documents remain is implicit in successful mock call)
+
+
+def test_create_plan_trigger_exception_with_cleanup_failure(client, valid_plan_payload):
+    """Test that cleanup failure is logged but original error is still raised."""
+    with (
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
+        patch("app.dependencies.firestore_service.delete_plan_with_specs") as mock_delete,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+    ):
+        # Setup mock execution service to raise exception
+        exec_service = MagicMock()
+        exec_service.trigger_spec_execution.side_effect = RuntimeError("Execution trigger failed")
+        mock_exec_service.return_value = exec_service
+
+        # Setup mock Firestore service to return CREATED
+        mock_create_fs.return_value = (PlanIngestionOutcome.CREATED, valid_plan_payload["id"])
+
+        # Setup mock delete to fail during cleanup
+        mock_delete.side_effect = FirestoreOperationError("Cleanup failed")
+
+        # Make request - should fail with original error
+        response = client.post("/plans", json=valid_plan_payload)
+
+        # Verify response is still 500 error (original error propagated)
+        assert response.status_code == 500
+        data = response.json()
+        assert data["detail"] == "Internal server error"
+
+        # Verify cleanup was attempted
+        mock_delete.assert_called_once_with(
+            valid_plan_payload["id"], client=mock_client.return_value
+        )
+
+
+def test_create_plan_sets_spec_0_execution_metadata(client, valid_plan_payload):
+    """Test that spec 0 has execution metadata set during successful ingestion."""
+    with (
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client"),
+    ):
+        # Setup mock execution service
+        exec_service = MagicMock()
+        mock_exec_service.return_value = exec_service
+
+        # Setup mock Firestore service to return CREATED
+        mock_create_fs.return_value = (PlanIngestionOutcome.CREATED, valid_plan_payload["id"])
+
+        # Make request
+        response = client.post("/plans", json=valid_plan_payload)
+
+        # Verify response
+        assert response.status_code == 201
+
+        # Verify trigger_spec_execution was called with spec_data
+        call_args = exec_service.trigger_spec_execution.call_args
+        spec_data = call_args[1]["spec_data"]
+
+        # Verify execution metadata is set for spec 0
+        assert spec_data.status == "running"
+        assert spec_data.spec_index == 0
+        assert spec_data.execution_attempts == 1
+        assert spec_data.last_execution_at is not None
+
+        # Verify spec data matches the input
+        assert spec_data.purpose == valid_plan_payload["specs"][0]["purpose"]
+        assert spec_data.vision == valid_plan_payload["specs"][0]["vision"]
+
+
+def test_create_plan_with_multiple_specs_only_triggers_spec_0(client, valid_plan_payload):
+    """Test that with multiple specs, only spec 0 gets execution triggered."""
+    # Extend valid_plan_payload with additional specs
+    plan_payload = valid_plan_payload.copy()
+    first_spec = valid_plan_payload["specs"][0]
+    plan_payload["specs"] = [
+        first_spec,
+        {
+            "purpose": "Second spec",
+            "vision": "Second vision",
+            "must": ["req 2"],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+        },
+        {
+            "purpose": "Third spec",
+            "vision": "Third vision",
+            "must": ["req 3"],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+        },
+    ]
+
+    with (
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client"),
+    ):
+        # Setup mock execution service
+        exec_service = MagicMock()
+        mock_exec_service.return_value = exec_service
+
+        # Setup mock Firestore service to return CREATED
+        mock_create_fs.return_value = (PlanIngestionOutcome.CREATED, plan_payload["id"])
+
+        # Make request
+        response = client.post("/plans", json=plan_payload)
+
+        # Verify response
+        assert response.status_code == 201
+
+        # Verify trigger_spec_execution was called exactly once
+        exec_service.trigger_spec_execution.assert_called_once()
+
+        # Verify it was only called for spec 0
+        call_args = exec_service.trigger_spec_execution.call_args
+        assert call_args[1]["spec_index"] == 0
+
+        # Verify the spec data is for the first spec
+        spec_data = call_args[1]["spec_data"]
+        assert spec_data.purpose == first_spec["purpose"]
+        assert spec_data.vision == first_spec["vision"]
