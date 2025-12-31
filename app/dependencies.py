@@ -16,7 +16,9 @@
 from google.cloud import firestore
 
 from app.config import Settings, get_settings
+from app.models.plan import PlanIn
 from app.services import firestore_service
+from app.services.firestore_service import PlanIngestionOutcome
 
 
 def get_cached_settings() -> Settings:
@@ -42,3 +44,23 @@ def get_firestore_client() -> firestore.Client:
         firestore_service.FirestoreConfigurationError: If configuration is invalid
     """
     return firestore_service.get_client()
+
+
+def create_plan(plan_in: PlanIn) -> tuple[PlanIngestionOutcome, str]:
+    """
+    Create a plan with specs in Firestore (dependency injection wrapper).
+
+    This wraps firestore_service.create_plan_with_specs() for use in FastAPI
+    dependency injection. Uses the cached Firestore client.
+
+    Args:
+        plan_in: PlanIn request payload
+
+    Returns:
+        Tuple of (outcome, plan_id)
+
+    Raises:
+        firestore_service.PlanConflictError: When plan exists with different body
+        firestore_service.FirestoreOperationError: When Firestore operation fails
+    """
+    return firestore_service.create_plan_with_specs(plan_in)
