@@ -13,7 +13,10 @@
 # limitations under the License.
 """Shared dependencies for dependency injection."""
 
+from google.cloud import firestore
+
 from app.config import Settings, get_settings
+from app.services import firestore_service
 
 
 def get_cached_settings() -> Settings:
@@ -23,3 +26,19 @@ def get_cached_settings() -> Settings:
     This wraps get_settings() which is already cached with @lru_cache.
     """
     return get_settings()
+
+
+def get_firestore_client() -> firestore.Client:
+    """
+    Get cached Firestore client instance for dependency injection.
+    
+    This wraps firestore_service.get_client() which is already cached
+    with @lru_cache to ensure singleton semantics.
+    
+    Returns:
+        firestore.Client: Cached Firestore client instance
+        
+    Raises:
+        firestore_service.FirestoreConfigurationError: If configuration is invalid
+    """
+    return firestore_service.get_client()
