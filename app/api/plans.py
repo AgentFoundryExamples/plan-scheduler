@@ -16,7 +16,6 @@
 import logging
 
 from fastapi import APIRouter, HTTPException, Response, status
-from pydantic import ValidationError
 
 from app.models.plan import PlanCreateResponse, PlanIn
 from app.services.firestore_service import (
@@ -85,8 +84,9 @@ async def create_plan(plan_in: PlanIn, response: Response) -> PlanCreateResponse
         PlanCreateResponse with plan_id and status
 
     Raises:
-        HTTPException: 400 for validation errors, 409 for conflicts, 500 for server errors
+        HTTPException: 409 for conflicts, 500 for server errors
     """
+    # Import here to avoid circular import at module load time
     from app.dependencies import create_plan as create_plan_service
 
     try:
@@ -126,18 +126,6 @@ async def create_plan(plan_in: PlanIn, response: Response) -> PlanCreateResponse
             # Return 200 OK for idempotent replays
             response.status_code = status.HTTP_200_OK
             return PlanCreateResponse(plan_id=plan_id, status="running")
-
-    except ValidationError as e:
-        # Pydantic validation errors (should be caught by FastAPI, but handle explicitly)
-        error_msg = f"Validation error: {str(e)}"
-        logger.warning(
-            "Plan ingestion validation error",
-            extra={
-                "plan_id": plan_in.id if hasattr(plan_in, "id") else "unknown",
-                "error": str(e),
-            },
-        )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg) from e
 
     except PlanConflictError as e:
         # Plan exists with different body
