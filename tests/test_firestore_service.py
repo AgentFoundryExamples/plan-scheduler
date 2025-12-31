@@ -1013,3 +1013,697 @@ def test_delete_plan_with_specs_logs_deletion(mock_firestore_client, caplog):
 
     info_messages = [record.message for record in caplog.records if record.levelname == "INFO"]
     assert any("Deleted plan" in msg and plan_id in msg for msg in info_messages)
+
+
+# Tests for process_spec_status_update functionality
+
+
+@pytest.fixture
+def mock_transaction_client():
+    """Create a mock Firestore client for transaction testing."""
+    mock_client = MagicMock()
+    mock_transaction = MagicMock()
+    mock_client.transaction.return_value = mock_transaction
+    return mock_client
+
+
+def test_process_spec_status_update_finishing_last_spec(mock_transaction_client):
+    """Test that finishing the last spec marks plan as finished and sets current_spec_index to null."""
+    from datetime import UTC, datetime
+
+    from app.services.firestore_service import process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-123"
+
+    # Mock plan document - single spec plan
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "overall_status": "running",
+        "total_specs": 1,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+    }
+
+    # Mock spec document
+    mock_spec_snapshot = MagicMock()
+    mock_spec_snapshot.exists = True
+    mock_spec_snapshot.to_dict.return_value = {
+        "status": "running",
+        "history": [],
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_spec_ref = MagicMock()
+
+    def mock_get_with_transaction(transaction=None):
+        # Return appropriate snapshot based on the ref
+        if hasattr(mock_get_with_transaction, "call_count"):
+            mock_get_with_transaction.call_count += 1
+        else:
+            mock_get_with_transaction.call_count = 1
+
+        if mock_get_with_transaction.call_count == 1:
+            return mock_plan_snapshot
+        return mock_spec_snapshot
+
+    mock_plan_ref.get = mock_get_with_transaction
+    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    result = process_spec_status_update(
+        plan_id=plan_id,
+        spec_index=spec_index,
+        status="finished",
+        stage="implementation",
+        message_id=message_id,
+        raw_payload_snippet={"test": "data"},
+        client=mock_transaction_client,
+    )
+
+    assert result["success"] is True
+    assert result["plan_finished"] is True
+    assert result["next_spec_triggered"] is False
+
+    # Verify plan was updated with overall_status=finished and current_spec_index=None
+    transaction = mock_transaction_client.transaction.return_value
+    update_calls = [call for call in transaction.update.call_args_list]
+    assert len(update_calls) == 2  # spec update + plan update
+
+    # Check plan update
+    plan_update_call = update_calls[1]
+    plan_updates = plan_update_call[0][1]
+    assert plan_updates["overall_status"] == "finished"
+    assert plan_updates["current_spec_index"] is None
+    assert plan_updates["completed_specs"] == 1
+
+
+def test_process_spec_status_update_finishing_non_last_spec(mock_transaction_client):
+    """Test that finishing a non-last spec advances to next spec and triggers execution."""
+    from app.services.firestore_service import process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-123"
+
+    # Mock plan document - 2 spec plan
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "overall_status": "running",
+        "total_specs": 2,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+    }
+
+    # Mock current spec document
+    mock_spec_snapshot = MagicMock()
+    mock_spec_snapshot.exists = True
+    mock_spec_snapshot.to_dict.return_value = {
+        "status": "running",
+        "history": [],
+    }
+
+    # Mock next spec document (blocked)
+    mock_next_spec_snapshot = MagicMock()
+    mock_next_spec_snapshot.exists = True
+    mock_next_spec_snapshot.to_dict.return_value = {
+        "status": "blocked",
+        "history": [],
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_spec_ref = MagicMock()
+    mock_next_spec_ref = MagicMock()
+
+    call_counter = {"count": 0}
+
+    def mock_get_with_transaction(transaction=None):
+        call_counter["count"] += 1
+        if call_counter["count"] == 1:
+            return mock_plan_snapshot
+        elif call_counter["count"] == 2:
+            return mock_spec_snapshot
+        else:
+            return mock_next_spec_snapshot
+
+    mock_plan_ref.get = mock_get_with_transaction
+    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_next_spec_ref.get = MagicMock(return_value=mock_next_spec_snapshot)
+
+    mock_specs_collection = MagicMock()
+
+    def document_side_effect(doc_id):
+        if doc_id == "0":
+            return mock_spec_ref
+        elif doc_id == "1":
+            return mock_next_spec_ref
+        return MagicMock()
+
+    mock_specs_collection.document = document_side_effect
+    mock_plan_ref.collection.return_value = mock_specs_collection
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    result = process_spec_status_update(
+        plan_id=plan_id,
+        spec_index=spec_index,
+        status="finished",
+        stage="implementation",
+        message_id=message_id,
+        raw_payload_snippet={"test": "data"},
+        client=mock_transaction_client,
+    )
+
+    assert result["success"] is True
+    assert result["plan_finished"] is False
+    assert result["next_spec_triggered"] is True
+
+    # Verify next spec was unblocked (status changed to running)
+    transaction = mock_transaction_client.transaction.return_value
+    update_calls = [call for call in transaction.update.call_args_list]
+    assert len(update_calls) == 3  # next spec + current spec + plan
+
+    # Check updates were made (order: next spec, current spec, plan)
+    # First update is next spec (running)
+    next_spec_update_call = update_calls[0]
+    next_spec_updates = next_spec_update_call[0][1]
+    assert next_spec_updates["status"] == "running"
+
+    # Second update is current spec (finished)
+    spec_update_call = update_calls[1]
+    spec_updates = spec_update_call[0][1]
+    assert spec_updates["status"] == "finished"
+
+    # Third update is plan
+    plan_update_call = update_calls[2]
+    plan_updates = plan_update_call[0][1]
+    assert plan_updates["current_spec_index"] == 1
+    assert plan_updates["completed_specs"] == 1
+
+
+def test_process_spec_status_update_failed_spec(mock_transaction_client):
+    """Test that failed spec marks both spec and plan as failed, never calls ExecutionService."""
+    from app.services.firestore_service import process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-123"
+
+    # Mock plan document - 2 spec plan
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "overall_status": "running",
+        "total_specs": 2,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+    }
+
+    # Mock spec document
+    mock_spec_snapshot = MagicMock()
+    mock_spec_snapshot.exists = True
+    mock_spec_snapshot.to_dict.return_value = {
+        "status": "running",
+        "history": [],
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_spec_ref = MagicMock()
+
+    call_counter = {"count": 0}
+
+    def mock_get_with_transaction(transaction=None):
+        call_counter["count"] += 1
+        if call_counter["count"] == 1:
+            return mock_plan_snapshot
+        return mock_spec_snapshot
+
+    mock_plan_ref.get = mock_get_with_transaction
+    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    result = process_spec_status_update(
+        plan_id=plan_id,
+        spec_index=spec_index,
+        status="failed",
+        stage="implementation",
+        message_id=message_id,
+        raw_payload_snippet={"test": "data"},
+        client=mock_transaction_client,
+    )
+
+    assert result["success"] is True
+    assert result["plan_finished"] is False
+    assert result["next_spec_triggered"] is False
+
+    # Verify spec was marked as failed
+    transaction = mock_transaction_client.transaction.return_value
+    update_calls = [call for call in transaction.update.call_args_list]
+    assert len(update_calls) == 2  # spec update + plan update
+
+    # Check spec update
+    spec_update_call = update_calls[0]
+    spec_updates = spec_update_call[0][1]
+    assert spec_updates["status"] == "failed"
+
+    # Check plan update
+    plan_update_call = update_calls[1]
+    plan_updates = plan_update_call[0][1]
+    assert plan_updates["overall_status"] == "failed"
+
+
+def test_process_spec_status_update_intermediate_status(mock_transaction_client):
+    """Test that intermediate status updates only stage field while leaving primary status untouched."""
+    from app.services.firestore_service import process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-123"
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "overall_status": "running",
+        "total_specs": 2,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+    }
+
+    # Mock spec document
+    mock_spec_snapshot = MagicMock()
+    mock_spec_snapshot.exists = True
+    mock_spec_snapshot.to_dict.return_value = {
+        "status": "running",
+        "history": [],
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_spec_ref = MagicMock()
+
+    call_counter = {"count": 0}
+
+    def mock_get_with_transaction(transaction=None):
+        call_counter["count"] += 1
+        if call_counter["count"] == 1:
+            return mock_plan_snapshot
+        return mock_spec_snapshot
+
+    mock_plan_ref.get = mock_get_with_transaction
+    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    result = process_spec_status_update(
+        plan_id=plan_id,
+        spec_index=spec_index,
+        status="running",  # Non-terminal status
+        stage="reviewing",  # Intermediate stage
+        message_id=message_id,
+        raw_payload_snippet={"test": "data"},
+        client=mock_transaction_client,
+    )
+
+    assert result["success"] is True
+    assert result["plan_finished"] is False
+    assert result["next_spec_triggered"] is False
+
+    # Verify only stage was updated, not status
+    transaction = mock_transaction_client.transaction.return_value
+    update_calls = [call for call in transaction.update.call_args_list]
+    assert len(update_calls) == 2  # spec update + plan update
+
+    # Check spec update
+    spec_update_call = update_calls[0]
+    spec_updates = spec_update_call[0][1]
+    assert "status" not in spec_updates  # status should NOT be changed
+    assert spec_updates["current_stage"] == "reviewing"
+    assert len(spec_updates["history"]) == 1
+
+
+def test_process_spec_status_update_out_of_order_finished(mock_transaction_client):
+    """Test that out-of-order finished message aborts transaction and logs error."""
+    from app.services.firestore_service import process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 1  # Trying to finish spec 1
+    message_id = "msg-123"
+
+    # Mock plan document - current spec is 0, not 1
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "overall_status": "running",
+        "total_specs": 3,
+        "completed_specs": 0,
+        "current_spec_index": 0,  # Current spec is 0, not 1
+    }
+
+    # Mock spec document
+    mock_spec_snapshot = MagicMock()
+    mock_spec_snapshot.exists = True
+    mock_spec_snapshot.to_dict.return_value = {
+        "status": "blocked",
+        "history": [],
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_spec_ref = MagicMock()
+
+    call_counter = {"count": 0}
+
+    def mock_get_with_transaction(transaction=None):
+        call_counter["count"] += 1
+        if call_counter["count"] == 1:
+            return mock_plan_snapshot
+        return mock_spec_snapshot
+
+    mock_plan_ref.get = mock_get_with_transaction
+    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    result = process_spec_status_update(
+        plan_id=plan_id,
+        spec_index=spec_index,
+        status="finished",
+        stage="implementation",
+        message_id=message_id,
+        raw_payload_snippet={"test": "data"},
+        client=mock_transaction_client,
+    )
+
+    assert result["success"] is False
+    assert result["action"] == "out_of_order"
+    assert "out of order" in result["message"].lower()
+
+    # Verify NO updates were made
+    transaction = mock_transaction_client.transaction.return_value
+    transaction.update.assert_not_called()
+
+
+def test_process_spec_status_update_duplicate_message_id(mock_transaction_client):
+    """Test that duplicate messageIds are filtered from history and don't re-trigger execution."""
+    from app.services.firestore_service import process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-123"
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "overall_status": "running",
+        "total_specs": 2,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+    }
+
+    # Mock spec document with message_id already in history
+    mock_spec_snapshot = MagicMock()
+    mock_spec_snapshot.exists = True
+    mock_spec_snapshot.to_dict.return_value = {
+        "status": "running",
+        "history": [
+            {
+                "timestamp": "2025-01-01T12:00:00Z",
+                "received_status": "running",
+                "stage": "implementation",
+                "message_id": "msg-123",  # Duplicate message
+            }
+        ],
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_spec_ref = MagicMock()
+
+    call_counter = {"count": 0}
+
+    def mock_get_with_transaction(transaction=None):
+        call_counter["count"] += 1
+        if call_counter["count"] == 1:
+            return mock_plan_snapshot
+        return mock_spec_snapshot
+
+    mock_plan_ref.get = mock_get_with_transaction
+    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    result = process_spec_status_update(
+        plan_id=plan_id,
+        spec_index=spec_index,
+        status="finished",
+        stage="implementation",
+        message_id=message_id,
+        raw_payload_snippet={"test": "data"},
+        client=mock_transaction_client,
+    )
+
+    assert result["success"] is True
+    assert result["action"] == "duplicate"
+    assert "duplicate" in result["message"].lower()
+
+    # Verify NO updates were made
+    transaction = mock_transaction_client.transaction.return_value
+    transaction.update.assert_not_called()
+
+
+def test_process_spec_status_update_history_entry_contents(mock_transaction_client):
+    """Test that history entries contain timestamp, stage, messageId, and raw snippet."""
+    from app.services.firestore_service import process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-123"
+    raw_snippet = {"plan_id": plan_id, "spec_index": spec_index, "status": "running"}
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "overall_status": "running",
+        "total_specs": 2,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+    }
+
+    # Mock spec document
+    mock_spec_snapshot = MagicMock()
+    mock_spec_snapshot.exists = True
+    mock_spec_snapshot.to_dict.return_value = {
+        "status": "running",
+        "history": [],
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_spec_ref = MagicMock()
+
+    call_counter = {"count": 0}
+
+    def mock_get_with_transaction(transaction=None):
+        call_counter["count"] += 1
+        if call_counter["count"] == 1:
+            return mock_plan_snapshot
+        return mock_spec_snapshot
+
+    mock_plan_ref.get = mock_get_with_transaction
+    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    result = process_spec_status_update(
+        plan_id=plan_id,
+        spec_index=spec_index,
+        status="running",
+        stage="reviewing",
+        message_id=message_id,
+        raw_payload_snippet=raw_snippet,
+        client=mock_transaction_client,
+    )
+
+    assert result["success"] is True
+
+    # Verify history entry contents
+    transaction = mock_transaction_client.transaction.return_value
+    update_calls = [call for call in transaction.update.call_args_list]
+    spec_update_call = update_calls[0]
+    spec_updates = spec_update_call[0][1]
+
+    history = spec_updates["history"]
+    assert len(history) == 1
+    history_entry = history[0]
+    assert "timestamp" in history_entry
+    assert history_entry["received_status"] == "running"
+    assert history_entry["stage"] == "reviewing"
+    assert history_entry["message_id"] == message_id
+    assert history_entry["raw_snippet"] == raw_snippet
+
+
+def test_process_spec_status_update_manual_retry_after_failure(mock_transaction_client):
+    """Test that previously failed spec can record new non-terminal events without unblocking."""
+    from app.services.firestore_service import process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-retry-123"
+
+    # Mock plan document - plan is failed
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "overall_status": "failed",
+        "total_specs": 2,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+    }
+
+    # Mock spec document - spec is failed
+    mock_spec_snapshot = MagicMock()
+    mock_spec_snapshot.exists = True
+    mock_spec_snapshot.to_dict.return_value = {
+        "status": "failed",
+        "history": [
+            {
+                "timestamp": "2025-01-01T12:00:00Z",
+                "received_status": "failed",
+                "stage": "implementation",
+                "message_id": "msg-original-fail",
+            }
+        ],
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_spec_ref = MagicMock()
+
+    call_counter = {"count": 0}
+
+    def mock_get_with_transaction(transaction=None):
+        call_counter["count"] += 1
+        if call_counter["count"] == 1:
+            return mock_plan_snapshot
+        return mock_spec_snapshot
+
+    mock_plan_ref.get = mock_get_with_transaction
+    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    # Send a non-terminal status (manual retry)
+    result = process_spec_status_update(
+        plan_id=plan_id,
+        spec_index=spec_index,
+        status="running",  # Non-terminal status
+        stage="retrying",
+        message_id=message_id,
+        raw_payload_snippet={"test": "retry"},
+        client=mock_transaction_client,
+    )
+
+    # Should be accepted but NOT change terminal status or unblock next spec
+    assert result["success"] is True
+    assert result["next_spec_triggered"] is False
+
+    # Verify history was appended but status remains terminal
+    transaction = mock_transaction_client.transaction.return_value
+    update_calls = [call for call in transaction.update.call_args_list]
+    spec_update_call = update_calls[0]
+    spec_updates = spec_update_call[0][1]
+
+    # Status should NOT be in the update (terminal status preserved)
+    assert "status" not in spec_updates
+    # History should have new entry
+    assert len(spec_updates["history"]) == 2
+    assert spec_updates["history"][1]["message_id"] == message_id
+
+
+def test_process_spec_status_update_terminal_status_protection(mock_transaction_client):
+    """Test that duplicate terminal statuses are prevented."""
+    from app.services.firestore_service import process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-duplicate-finished"
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "overall_status": "running",
+        "total_specs": 2,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+    }
+
+    # Mock spec document - already finished
+    mock_spec_snapshot = MagicMock()
+    mock_spec_snapshot.exists = True
+    mock_spec_snapshot.to_dict.return_value = {
+        "status": "finished",  # Already terminal
+        "history": [
+            {
+                "timestamp": "2025-01-01T12:00:00Z",
+                "received_status": "finished",
+                "stage": "implementation",
+                "message_id": "msg-original-finished",
+            }
+        ],
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_spec_ref = MagicMock()
+
+    call_counter = {"count": 0}
+
+    def mock_get_with_transaction(transaction=None):
+        call_counter["count"] += 1
+        if call_counter["count"] == 1:
+            return mock_plan_snapshot
+        return mock_spec_snapshot
+
+    mock_plan_ref.get = mock_get_with_transaction
+    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    # Try to finish again
+    result = process_spec_status_update(
+        plan_id=plan_id,
+        spec_index=spec_index,
+        status="finished",  # Duplicate terminal status
+        stage="implementation",
+        message_id=message_id,
+        raw_payload_snippet={"test": "duplicate"},
+        client=mock_transaction_client,
+    )
+
+    assert result["success"] is False
+    assert result["action"] == "out_of_order"
+    assert "terminal" in result["message"].lower()
+
+    # Verify NO updates were made
+    transaction = mock_transaction_client.transaction.return_value
+    transaction.update.assert_not_called()
