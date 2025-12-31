@@ -14,7 +14,6 @@
 """Tests for spec status update processing in Firestore service."""
 
 import uuid
-from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest

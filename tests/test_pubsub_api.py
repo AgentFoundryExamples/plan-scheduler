@@ -383,9 +383,10 @@ class TestSpecStatusEndpointExecutionTrigger:
             updated_at=datetime.now(UTC),
         ).model_dump()
 
-        mock_client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
-            mock_spec_snapshot
+        mock_collection_chain = (
+            mock_client.collection.return_value.document.return_value.collection.return_value.document.return_value
         )
+        mock_collection_chain.get.return_value = mock_spec_snapshot
 
         # Mock execution service
         mock_exec_service = MagicMock()
@@ -444,9 +445,10 @@ class TestSpecStatusEndpointExecutionTrigger:
             updated_at=datetime.now(UTC),
         ).model_dump()
 
-        mock_client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
-            mock_spec_snapshot
+        mock_collection_chain = (
+            mock_client.collection.return_value.document.return_value.collection.return_value.document.return_value
         )
+        mock_collection_chain.get.return_value = mock_spec_snapshot
 
         # Mock execution service to raise exception
         mock_exec_service = MagicMock()
