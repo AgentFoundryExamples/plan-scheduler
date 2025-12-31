@@ -528,8 +528,9 @@ def test_create_plan_with_multiple_specs_only_triggers_spec_0(client, valid_plan
     """Test that with multiple specs, only spec 0 gets execution triggered."""
     # Extend valid_plan_payload with additional specs
     plan_payload = valid_plan_payload.copy()
+    first_spec = valid_plan_payload["specs"][0]
     plan_payload["specs"] = [
-        valid_plan_payload["specs"][0],
+        first_spec,
         {
             "purpose": "Second spec",
             "vision": "Second vision",
@@ -575,5 +576,5 @@ def test_create_plan_with_multiple_specs_only_triggers_spec_0(client, valid_plan
 
         # Verify the spec data is for the first spec
         spec_data = call_args[1]["spec_data"]
-        assert spec_data.purpose == valid_plan_payload["specs"][0]["purpose"]
-        assert spec_data.vision == valid_plan_payload["specs"][0]["vision"]
+        assert spec_data.purpose == first_spec["purpose"]
+        assert spec_data.vision == first_spec["vision"]
