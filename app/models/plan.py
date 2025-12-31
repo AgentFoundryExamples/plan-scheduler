@@ -203,29 +203,21 @@ def create_initial_spec_record(
         SpecRecord with consistent defaults and timezone-aware timestamps
 
     Raises:
-        ValueError: If status is not one of: blocked, running, finished, failed
+        pydantic.ValidationError: If status is invalid
     """
-    if status not in ("blocked", "running", "finished", "failed"):
-        raise ValueError(
-            f"Invalid spec status: {status}. Must be one of: blocked, running, finished, failed"
-        )
-
-    if now is None:
-        now = datetime.now(UTC)
-    elif now.tzinfo is None:
-        now = now.replace(tzinfo=UTC)
+    timestamp = now if now is not None else datetime.now(UTC)
 
     return SpecRecord(
         spec_index=spec_index,
         purpose=spec_in.purpose,
         vision=spec_in.vision,
-        must=spec_in.must.copy() if spec_in.must else [],
-        dont=spec_in.dont.copy() if spec_in.dont else [],
-        nice=spec_in.nice.copy() if spec_in.nice else [],
-        assumptions=spec_in.assumptions.copy() if spec_in.assumptions else [],
+        must=spec_in.must.copy(),
+        dont=spec_in.dont.copy(),
+        nice=spec_in.nice.copy(),
+        assumptions=spec_in.assumptions.copy(),
         status=status,
-        created_at=now,
-        updated_at=now,
+        created_at=timestamp,
+        updated_at=timestamp,
         history=[],
     )
 
@@ -247,26 +239,18 @@ def create_initial_plan_record(
         PlanRecord with consistent defaults and timezone-aware timestamps
 
     Raises:
-        ValueError: If overall_status is not one of: running, finished, failed
+        pydantic.ValidationError: If overall_status is invalid
     """
-    if overall_status not in ("running", "finished", "failed"):
-        raise ValueError(
-            f"Invalid plan status: {overall_status}. Must be one of: running, finished, failed"
-        )
-
-    if now is None:
-        now = datetime.now(UTC)
-    elif now.tzinfo is None:
-        now = now.replace(tzinfo=UTC)
+    timestamp = now if now is not None else datetime.now(UTC)
 
     return PlanRecord(
         plan_id=plan_in.id,
         overall_status=overall_status,
-        created_at=now,
-        updated_at=now,
+        created_at=timestamp,
+        updated_at=timestamp,
         total_specs=len(plan_in.specs),
         completed_specs=0,
         current_spec_index=None,
-        last_event_at=now,
+        last_event_at=timestamp,
         raw_request=plan_in.model_dump(),
     )

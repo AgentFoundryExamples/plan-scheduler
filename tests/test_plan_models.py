@@ -541,10 +541,11 @@ class TestCreateInitialSpecRecord:
         """Test factory rejects invalid status values."""
         spec_in = SpecIn(purpose="Test", vision="Test")
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             create_initial_spec_record(spec_in, spec_index=0, status="invalid")
 
-        assert "Invalid spec status" in str(exc_info.value)
+        errors = exc_info.value.errors()
+        assert any("status" in str(e) for e in errors)
 
     def test_create_initial_spec_record_copies_lists(self):
         """Test factory creates independent copies of list fields."""
@@ -636,10 +637,11 @@ class TestCreateInitialPlanRecord:
         spec = SpecIn(purpose="Test", vision="Test")
         plan_in = PlanIn(id=plan_id, specs=[spec])
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             create_initial_plan_record(plan_in, overall_status="blocked")
 
-        assert "Invalid plan status" in str(exc_info.value)
+        errors = exc_info.value.errors()
+        assert any("overall_status" in str(e) for e in errors)
 
     def test_create_initial_plan_record_stores_raw_request(self):
         """Test factory stores the original request as dict."""
