@@ -5,6 +5,7 @@ import os
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 
@@ -44,21 +45,21 @@ def test_settings_from_environment():
 def test_port_validation_rejects_non_integer():
     """Test that PORT validation rejects non-integer values."""
     with patch.dict(os.environ, {"PORT": "not-a-number"}, clear=True):
-        with pytest.raises(ValueError, match="PORT must be a valid integer"):
+        with pytest.raises(ValidationError, match="int_parsing"):
             Settings()
 
 
 def test_port_validation_rejects_out_of_range_low():
     """Test that PORT validation rejects values below valid range."""
     with patch.dict(os.environ, {"PORT": "0"}, clear=True):
-        with pytest.raises(ValueError, match="PORT must be between 1 and 65535"):
+        with pytest.raises(ValidationError, match="greater_than_equal"):
             Settings()
 
 
 def test_port_validation_rejects_out_of_range_high():
     """Test that PORT validation rejects values above valid range."""
     with patch.dict(os.environ, {"PORT": "65536"}, clear=True):
-        with pytest.raises(ValueError, match="PORT must be between 1 and 65535"):
+        with pytest.raises(ValidationError, match="less_than_equal"):
             Settings()
 
 

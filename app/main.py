@@ -118,5 +118,6 @@ def create_app() -> FastAPI:
     return app
 
 
-# Create app instance
+# Create app instance for ASGI server to import
+# This is required for uvicorn to find the app with "app.main:app"
 app = create_app()

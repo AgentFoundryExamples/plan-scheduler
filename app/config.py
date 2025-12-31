@@ -1,8 +1,6 @@
 """Application configuration using pydantic BaseSettings."""
 
 import logging
-import os
-from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,20 +45,6 @@ class Settings(BaseSettings):
         default="",
         description="Token for verifying Pub/Sub requests"
     )
-
-    @field_validator("PORT", mode="before")
-    @classmethod
-    def validate_port(cls, v):
-        """Validate PORT is a valid integer."""
-        if v is None:
-            return 8080
-        try:
-            port = int(v)
-            if port < 1 or port > 65535:
-                raise ValueError(f"PORT must be between 1 and 65535, got {port}")
-            return port
-        except (ValueError, TypeError) as e:
-            raise ValueError(f"PORT must be a valid integer: {e}")
 
     def model_post_init(self, __context):
         """Log warnings for missing critical configuration after initialization."""
