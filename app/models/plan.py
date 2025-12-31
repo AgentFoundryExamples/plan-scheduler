@@ -117,6 +117,12 @@ class SpecRecord(BaseModel):
         - "finished": Spec completed successfully
         - "failed": Spec execution failed
 
+    Execution Metadata:
+        - execution_attempts: Number of times execution has been triggered
+          (updated by trigger_spec_execution)
+        - last_execution_at: Timestamp of most recent execution trigger
+          (updated by trigger_spec_execution)
+
     Timestamps are timezone-aware (UTC) to avoid serialization mismatches.
     """
 
@@ -134,15 +140,32 @@ class SpecRecord(BaseModel):
     )
     created_at: datetime = Field(..., description="Timestamp when spec was created (UTC)")
     updated_at: datetime = Field(..., description="Timestamp when spec was last updated (UTC)")
+    execution_attempts: int = Field(
+        default=0,
+        description=(
+            "Number of times execution has been triggered "
+            "(updated by trigger_spec_execution)"
+        ),
+        ge=0,
+    )
+    last_execution_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp of most recent execution trigger "
+            "(updated by trigger_spec_execution, UTC)"
+        ),
+    )
     history: list[dict[str, Any]] = Field(
         default_factory=list,
         description="History of state transitions (can be empty initially)",
     )
 
-    @field_validator("created_at", "updated_at", mode="before")
+    @field_validator("created_at", "updated_at", "last_execution_at", mode="before")
     @classmethod
-    def ensure_timezone_aware(cls, v: Any) -> datetime:
+    def ensure_timezone_aware(cls, v: Any) -> datetime | None:
         """Ensure timestamps are timezone-aware (UTC)."""
+        if v is None:
+            return None
         if isinstance(v, datetime):
             if v.tzinfo is None:
                 return v.replace(tzinfo=UTC)
@@ -213,7 +236,9 @@ def create_initial_spec_record(
         now: Optional timestamp to use (default: current UTC time)
 
     Returns:
-        SpecRecord with consistent defaults and timezone-aware timestamps
+        SpecRecord with consistent defaults and timezone-aware timestamps.
+        Execution metadata fields (execution_attempts, last_execution_at) are
+        initialized to default values (0 and None respectively).
 
     Raises:
         pydantic.ValidationError: If status is invalid
@@ -231,6 +256,8 @@ def create_initial_spec_record(
         status=status,
         created_at=timestamp,
         updated_at=timestamp,
+        execution_attempts=0,
+        last_execution_at=None,
         history=[],
     )
 
