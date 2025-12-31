@@ -121,6 +121,24 @@
       }
     },
     {
+      "id": "app/models/pubsub.py",
+      "path": "app/models/pubsub.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "base64",
+          "datetime.datetime",
+          "json",
+          "typing.Any"
+        ],
+        "third-party": [
+          "pydantic.BaseModel",
+          "pydantic.Field",
+          "pydantic.field_validator"
+        ]
+      }
+    },
+    {
       "id": "app/services/__init__.py",
       "path": "app/services/__init__.py",
       "type": "file",
@@ -170,6 +188,17 @@
       "type": "file",
       "external_dependencies": {
         "stdlib": [],
+        "third-party": []
+      }
+    },
+    {
+      "id": "tests/conftest.py",
+      "path": "tests/conftest.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "os"
+        ],
         "third-party": []
       }
     },
@@ -299,6 +328,24 @@
           "pytest"
         ]
       }
+    },
+    {
+      "id": "tests/test_pubsub_models.py",
+      "path": "tests/test_pubsub_models.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "base64",
+          "datetime.UTC",
+          "datetime.datetime",
+          "json",
+          "uuid.uuid4"
+        ],
+        "third-party": [
+          "pydantic.ValidationError",
+          "pytest"
+        ]
+      }
     }
   ],
   "edges": [
@@ -425,10 +472,15 @@
     {
       "source": "tests/test_plans_api.py",
       "target": "app/models/plan.py"
+    },
+    {
+      "source": "tests/test_pubsub_models.py",
+      "target": "app/models/pubsub.py"
     }
   ],
   "external_dependencies_summary": {
     "stdlib": [
+      "base64",
       "contextlib.asynccontextmanager",
       "datetime.UTC",
       "datetime.datetime",
@@ -466,7 +518,7 @@
       "pytest",
       "pythonjsonlogger.json.JsonFormatter"
     ],
-    "stdlib_count": 16,
+    "stdlib_count": 17,
     "third-party_count": 18
   }
 }

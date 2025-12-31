@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "total_files": 21,
+  "total_files": 24,
   "files": [
     {
       "schema_version": "2.0",
@@ -67,8 +67,8 @@
       "summary": "Python configuration file (role: configuration)",
       "summary_text": "Python configuration file (role: configuration)",
       "metrics": {
-        "size_bytes": 2807,
-        "loc": 46,
+        "size_bytes": 3486,
+        "loc": 59,
         "todo_count": 0
       }
     },
@@ -130,6 +130,20 @@
     },
     {
       "schema_version": "2.0",
+      "path": "app/models/pubsub.py",
+      "language": "Python",
+      "role": "implementation",
+      "role_justification": "general implementation file (default classification)",
+      "summary": "Python module for pubsub",
+      "summary_text": "Python module for pubsub",
+      "metrics": {
+        "size_bytes": 6196,
+        "loc": 123,
+        "todo_count": 0
+      }
+    },
+    {
+      "schema_version": "2.0",
       "path": "app/services/__init__.py",
       "language": "Python",
       "role": "module-init",
@@ -186,6 +200,20 @@
     },
     {
       "schema_version": "2.0",
+      "path": "tests/conftest.py",
+      "language": "Python",
+      "role": "test",
+      "role_justification": "located in 'tests' directory",
+      "summary": "Python test implementation (role: test)",
+      "summary_text": "Python test implementation (role: test)",
+      "metrics": {
+        "size_bytes": 913,
+        "loc": 4,
+        "todo_count": 0
+      }
+    },
+    {
+      "schema_version": "2.0",
       "path": "tests/test_config.py",
       "language": "Python",
       "role": "test",
@@ -193,8 +221,8 @@
       "summary": "Python test file (role: test)",
       "summary_text": "Python test file (role: test)",
       "metrics": {
-        "size_bytes": 5748,
-        "loc": 107,
+        "size_bytes": 8543,
+        "loc": 171,
         "todo_count": 0
       }
     },
@@ -293,6 +321,20 @@
       "metrics": {
         "size_bytes": 22752,
         "loc": 425,
+        "todo_count": 0
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "path": "tests/test_pubsub_models.py",
+      "language": "Python",
+      "role": "test",
+      "role_justification": "filename starts with 'test_'",
+      "summary": "Python test file (role: test)",
+      "summary_text": "Python test file (role: test)",
+      "metrics": {
+        "size_bytes": 19242,
+        "loc": 359,
         "todo_count": 0
       }
     }

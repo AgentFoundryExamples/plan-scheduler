@@ -106,6 +106,10 @@
             },
             {
               "type": "file",
+              "name": "pubsub.py"
+            },
+            {
+              "type": "file",
               "name": "README.md"
             }
           ]
@@ -156,6 +160,10 @@
         },
         {
           "type": "file",
+          "name": "conftest.py"
+        },
+        {
+          "type": "file",
           "name": "test_config.py"
         },
         {
@@ -185,6 +193,10 @@
         {
           "type": "file",
           "name": "test_plans_api.py"
+        },
+        {
+          "type": "file",
+          "name": "test_pubsub_models.py"
         }
       ]
     },

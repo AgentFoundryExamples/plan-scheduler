@@ -8,17 +8,18 @@ Includes classification of external dependencies as stdlib vs third-party.
 
 ## Statistics
 
-- **Total files**: 21
-- **Intra-repo dependencies**: 31
-- **External stdlib dependencies**: 16
+- **Total files**: 24
+- **Intra-repo dependencies**: 32
+- **External stdlib dependencies**: 17
 - **External third-party dependencies**: 18
 
 ## External Dependencies
 
 ### Standard Library / Core Modules
 
-Total: 16 unique modules
+Total: 17 unique modules
 
+- `base64`
 - `contextlib.asynccontextmanager`
 - `datetime.UTC`
 - `datetime.datetime`
@@ -69,6 +70,7 @@ Total: 18 unique packages
 - `app/dependencies.py` (2 dependents)
 - `app/api/health.py` (1 dependents)
 - `app/api/plans.py` (1 dependents)
+- `app/models/pubsub.py` (1 dependents)
 
 ## Files with Most Dependencies (Intra-Repo)
 
