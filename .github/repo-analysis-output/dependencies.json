@@ -89,7 +89,6 @@
         "stdlib": [
           "functools.lru_cache",
           "logging",
-          "typing.Optional",
           "uuid"
         ],
         "third-party": [
@@ -131,9 +130,7 @@
       "external_dependencies": {
         "stdlib": [
           "logging",
-          "os",
           "unittest.mock.MagicMock",
-          "unittest.mock.PropertyMock",
           "unittest.mock.patch"
         ],
         "third-party": [
@@ -164,9 +161,7 @@
           "logging",
           "unittest.mock.patch"
         ],
-        "third-party": [
-          "pytest"
-        ]
+        "third-party": []
       }
     }
   ],
@@ -215,9 +210,7 @@
       "logging",
       "os",
       "sys",
-      "typing.Optional",
       "unittest.mock.MagicMock",
-      "unittest.mock.PropertyMock",
       "unittest.mock.patch",
       "uuid"
     ],
@@ -235,7 +228,7 @@
       "pytest",
       "pythonjsonlogger.json.JsonFormatter"
     ],
-    "stdlib_count": 10,
+    "stdlib_count": 8,
     "third-party_count": 12
   }
 }

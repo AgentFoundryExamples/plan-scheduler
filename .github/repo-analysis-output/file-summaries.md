@@ -38,8 +38,8 @@ Total files: 13
 **Role:** configuration  
 **Role Justification:** configuration file name 'config'  
 **Summary:** Python configuration file (role: configuration)  
-**Size:** 2.73 KB  
-**LOC:** 57  
+**Size:** 2.58 KB  
+**LOC:** 43  
 **TODOs/FIXMEs:** 0  
 
 ## app/dependencies.py
@@ -47,7 +47,7 @@ Total files: 13
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for dependencies  
-**Size:** 1.42 KB  
+**Size:** 1.40 KB  
 **LOC:** 21  
 **TODOs/FIXMEs:** 0  
 
@@ -56,8 +56,8 @@ Total files: 13
 **Role:** entry-point  
 **Role Justification:** common entry point name 'main'  
 **Summary:** Python main entry point (role: entry-point)  
-**Size:** 4.39 KB  
-**LOC:** 89  
+**Size:** 4.29 KB  
+**LOC:** 85  
 **TODOs/FIXMEs:** 0  
 
 ## app/services/__init__.py
@@ -74,8 +74,8 @@ Total files: 13
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for firestore service  
-**Size:** 6.07 KB  
-**LOC:** 110  
+**Size:** 5.96 KB  
+**LOC:** 108  
 **TODOs/FIXMEs:** 0  
 
 ## tests/__init__.py
@@ -92,8 +92,8 @@ Total files: 13
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 4.84 KB  
-**LOC:** 89  
+**Size:** 4.87 KB  
+**LOC:** 92  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_firestore_service.py
@@ -101,8 +101,8 @@ Total files: 13
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 13.65 KB  
-**LOC:** 234  
+**Size:** 13.49 KB  
+**LOC:** 238  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_health.py
@@ -110,7 +110,7 @@ Total files: 13
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 2.43 KB  
+**Size:** 2.40 KB  
 **LOC:** 45  
 **TODOs/FIXMEs:** 0  
 
@@ -119,6 +119,6 @@ Total files: 13
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 4.91 KB  
-**LOC:** 105  
+**Size:** 4.81 KB  
+**LOC:** 104  
 **TODOs/FIXMEs:** 0  

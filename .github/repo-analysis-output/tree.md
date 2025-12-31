@@ -34,7 +34,10 @@
   └── test_logging.py
 ├── .env.example
 ├── .gitignore
+├── .pre-commit-config.yaml
+├── Dockerfile
 ├── LICENSE
+├── Makefile
 ├── poetry.lock
 ├── pyproject.toml
 └── README.md

@@ -39,7 +39,7 @@
       "summary": "Python module for health",
       "summary_text": "Python module for health",
       "metrics": {
-        "size_bytes": 874,
+        "size_bytes": 870,
         "loc": 11,
         "todo_count": 0
       }
@@ -53,8 +53,8 @@
       "summary": "Python configuration file (role: configuration)",
       "summary_text": "Python configuration file (role: configuration)",
       "metrics": {
-        "size_bytes": 2792,
-        "loc": 57,
+        "size_bytes": 2644,
+        "loc": 43,
         "todo_count": 0
       }
     },
@@ -67,7 +67,7 @@
       "summary": "Python module for dependencies",
       "summary_text": "Python module for dependencies",
       "metrics": {
-        "size_bytes": 1456,
+        "size_bytes": 1436,
         "loc": 21,
         "todo_count": 0
       }
@@ -81,8 +81,8 @@
       "summary": "Python main entry point (role: entry-point)",
       "summary_text": "Python main entry point (role: entry-point)",
       "metrics": {
-        "size_bytes": 4499,
-        "loc": 89,
+        "size_bytes": 4395,
+        "loc": 85,
         "todo_count": 0
       }
     },
@@ -109,8 +109,8 @@
       "summary": "Python module for firestore service",
       "summary_text": "Python module for firestore service",
       "metrics": {
-        "size_bytes": 6220,
-        "loc": 110,
+        "size_bytes": 6104,
+        "loc": 108,
         "todo_count": 0
       }
     },
@@ -137,8 +137,8 @@
       "summary": "Python test file (role: test)",
       "summary_text": "Python test file (role: test)",
       "metrics": {
-        "size_bytes": 4952,
-        "loc": 89,
+        "size_bytes": 4988,
+        "loc": 92,
         "todo_count": 0
       }
     },
@@ -151,8 +151,8 @@
       "summary": "Python test file (role: test)",
       "summary_text": "Python test file (role: test)",
       "metrics": {
-        "size_bytes": 13976,
-        "loc": 234,
+        "size_bytes": 13817,
+        "loc": 238,
         "todo_count": 0
       }
     },
@@ -165,7 +165,7 @@
       "summary": "Python test file (role: test)",
       "summary_text": "Python test file (role: test)",
       "metrics": {
-        "size_bytes": 2490,
+        "size_bytes": 2462,
         "loc": 45,
         "todo_count": 0
       }
@@ -179,8 +179,8 @@
       "summary": "Python test file (role: test)",
       "summary_text": "Python test file (role: test)",
       "metrics": {
-        "size_bytes": 5025,
-        "loc": 105,
+        "size_bytes": 4922,
+        "loc": 104,
         "todo_count": 0
       }
     }

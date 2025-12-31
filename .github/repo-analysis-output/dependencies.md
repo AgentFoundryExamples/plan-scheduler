@@ -10,23 +10,21 @@ Includes classification of external dependencies as stdlib vs third-party.
 
 - **Total files**: 13
 - **Intra-repo dependencies**: 9
-- **External stdlib dependencies**: 10
+- **External stdlib dependencies**: 8
 - **External third-party dependencies**: 12
 
 ## External Dependencies
 
 ### Standard Library / Core Modules
 
-Total: 10 unique modules
+Total: 8 unique modules
 
 - `contextlib.asynccontextmanager`
 - `functools.lru_cache`
 - `logging`
 - `os`
 - `sys`
-- `typing.Optional`
 - `unittest.mock.MagicMock`
-- `unittest.mock.PropertyMock`
 - `unittest.mock.patch`
 - `uuid`
 

@@ -156,7 +156,19 @@
     },
     {
       "type": "file",
+      "name": ".pre-commit-config.yaml"
+    },
+    {
+      "type": "file",
+      "name": "Dockerfile"
+    },
+    {
+      "type": "file",
       "name": "LICENSE"
+    },
+    {
+      "type": "file",
+      "name": "Makefile"
     },
     {
       "type": "file",
