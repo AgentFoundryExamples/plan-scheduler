@@ -67,8 +67,8 @@
       "summary": "Python module for dependencies",
       "summary_text": "Python module for dependencies",
       "metrics": {
-        "size_bytes": 1436,
-        "loc": 21,
+        "size_bytes": 2174,
+        "loc": 37,
         "todo_count": 0
       }
     },
@@ -137,8 +137,8 @@
       "summary": "Python module for firestore service",
       "summary_text": "Python module for firestore service",
       "metrics": {
-        "size_bytes": 6104,
-        "loc": 108,
+        "size_bytes": 17850,
+        "loc": 325,
         "todo_count": 0
       }
     },
@@ -179,8 +179,8 @@
       "summary": "Python test file (role: test)",
       "summary_text": "Python test file (role: test)",
       "metrics": {
-        "size_bytes": 13817,
-        "loc": 238,
+        "size_bytes": 29889,
+        "loc": 511,
         "todo_count": 0
       }
     },

@@ -47,8 +47,8 @@ Total files: 16
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for dependencies  
-**Size:** 1.40 KB  
-**LOC:** 21  
+**Size:** 2.12 KB  
+**LOC:** 37  
 **TODOs/FIXMEs:** 0  
 
 ## app/main.py
@@ -92,8 +92,8 @@ Total files: 16
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for firestore service  
-**Size:** 5.96 KB  
-**LOC:** 108  
+**Size:** 17.43 KB  
+**LOC:** 325  
 **TODOs/FIXMEs:** 0  
 
 ## tests/__init__.py
@@ -119,8 +119,8 @@ Total files: 16
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 13.49 KB  
-**LOC:** 238  
+**Size:** 29.19 KB  
+**LOC:** 511  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_health.py

@@ -115,8 +115,14 @@
       "type": "file",
       "external_dependencies": {
         "stdlib": [
+          "datetime.UTC",
+          "datetime.datetime",
+          "enum.Enum",
           "functools.lru_cache",
+          "hashlib",
+          "json",
           "logging",
+          "typing.Any",
           "uuid"
         ],
         "third-party": [
@@ -159,7 +165,8 @@
         "stdlib": [
           "logging",
           "unittest.mock.MagicMock",
-          "unittest.mock.patch"
+          "unittest.mock.patch",
+          "uuid.uuid4"
         ],
         "third-party": [
           "google.api_core.exceptions",
@@ -216,6 +223,10 @@
     },
     {
       "source": "app/dependencies.py",
+      "target": "app/models/plan.py"
+    },
+    {
+      "source": "app/dependencies.py",
       "target": "app/services/firestore_service.py"
     },
     {
@@ -235,12 +246,20 @@
       "target": "app/config.py"
     },
     {
+      "source": "app/services/firestore_service.py",
+      "target": "app/models/plan.py"
+    },
+    {
       "source": "tests/test_config.py",
       "target": "app/config.py"
     },
     {
       "source": "tests/test_firestore_service.py",
       "target": "app/services/firestore_service.py"
+    },
+    {
+      "source": "tests/test_firestore_service.py",
+      "target": "app/models/plan.py"
     },
     {
       "source": "tests/test_health.py",
@@ -260,7 +279,10 @@
       "contextlib.asynccontextmanager",
       "datetime.UTC",
       "datetime.datetime",
+      "enum.Enum",
       "functools.lru_cache",
+      "hashlib",
+      "json",
       "logging",
       "os",
       "sys",
@@ -288,7 +310,7 @@
       "pytest",
       "pythonjsonlogger.json.JsonFormatter"
     ],
-    "stdlib_count": 13,
+    "stdlib_count": 16,
     "third-party_count": 15
   }
 }
