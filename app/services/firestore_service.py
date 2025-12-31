@@ -11,7 +11,38 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Firestore service integration with credential-aware initialization."""
+"""Firestore service integration with credential-aware initialization.
+
+This module provides:
+1. Firestore client initialization and connectivity testing
+2. Plan persistence with idempotent ingestion and conflict detection
+3. Atomic batch writes for plan metadata and spec subcollections
+
+Key Functions:
+- get_client(): Get singleton Firestore client instance
+- smoke_test(): Test Firestore connectivity
+- create_plan_with_specs(): Create plan with specs (idempotent, atomic)
+
+Exception Classes:
+- FirestoreConfigurationError: Invalid or missing configuration
+- FirestoreConnectionError: Connectivity test failures
+- FirestoreOperationError: Firestore operation failures
+- PlanConflictError: Plan exists with different body (includes digests)
+
+Outcomes:
+- PlanIngestionOutcome.CREATED: New plan created
+- PlanIngestionOutcome.IDENTICAL: Idempotent success (same payload)
+- PlanIngestionOutcome.CONFLICT: Raises PlanConflictError
+
+Plan Structure:
+- plans/{plan_id}: Metadata document
+  - overall_status, total_specs, completed_specs, current_spec_index
+  - last_event_at, raw_request, timestamps
+- plans/{plan_id}/specs/{index}: Spec subcollection
+  - status: "running" (index 0), "blocked" (others)
+  - purpose, vision, must, dont, nice, assumptions
+  - timestamps, history
+"""
 
 import hashlib
 import json
