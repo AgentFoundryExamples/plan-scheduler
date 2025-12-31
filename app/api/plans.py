@@ -162,7 +162,7 @@ async def create_plan(plan_in: PlanIn, response: Response) -> PlanCreateResponse
         logger.error(
             "Plan ingestion failed due to unexpected error",
             extra={
-                "plan_id": plan_in.id if hasattr(plan_in, "id") else "unknown",
+                "plan_id": getattr(plan_in, "id", "unknown"),
                 "error": str(e),
             },
             exc_info=True,
