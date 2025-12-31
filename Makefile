@@ -69,9 +69,17 @@ docker-run:
 		exit 1; \
 	fi
 	@echo "Running Docker container..."
+	@# Extract GOOGLE_APPLICATION_CREDENTIALS from .env if it exists
+	@CREDS_PATH=$$(grep "^GOOGLE_APPLICATION_CREDENTIALS=" .env | cut -d '=' -f2); \
+	VOLUME_MOUNT=""; \
+	if [ -n "$$CREDS_PATH" ] && [ "$$CREDS_PATH" != "" ] && [ -f "$$CREDS_PATH" ]; then \
+		VOLUME_MOUNT="-v $$CREDS_PATH:$$CREDS_PATH:ro"; \
+		echo "Mounting credentials file: $$CREDS_PATH"; \
+	fi; \
 	docker run -d \
 		--name plan-scheduler \
 		--env-file .env \
+		$$VOLUME_MOUNT \
 		-p 8080:8080 \
 		plan-scheduler:latest
 	@echo "Container started. Access at http://localhost:8080"

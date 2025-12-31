@@ -184,8 +184,10 @@ docker build -t plan-scheduler:latest .
 ```
 
 The Dockerfile:
-- Uses Python 3.12 slim base image for minimal size
-- Installs Poetry and project dependencies
+- Uses multi-stage build for smaller final image
+- Builder stage installs Poetry and exports dependencies to requirements.txt
+- Final stage uses Python 3.12 slim base image
+- Installs dependencies from requirements.txt (no Poetry in final image)
 - Copies application code
 - Exposes port 8080 (Cloud Run default)
 - Runs uvicorn with Cloud Run compatible settings (host 0.0.0.0)
@@ -196,7 +198,7 @@ The Dockerfile:
 **Prerequisites**: Create a `.env` file from `.env.example` with your configuration.
 
 ```bash
-# Using Makefile
+# Using Makefile (automatically mounts credentials file if specified)
 make docker-run
 
 # Or using Docker directly
@@ -205,12 +207,24 @@ docker run -d \
   --env-file .env \
   -p 8080:8080 \
   plan-scheduler:latest
+
+# If you need to mount a credentials file
+docker run -d \
+  --name plan-scheduler \
+  --env-file .env \
+  -v /path/to/service-account-key.json:/path/to/service-account-key.json:ro \
+  -p 8080:8080 \
+  plan-scheduler:latest
 ```
 
 The container will:
 - Load environment variables from `.env` file
+- Automatically mount credentials file if path is found in `.env` (when using Makefile)
 - Expose the service on http://localhost:8080
 - Run in detached mode (background)
+
+**Note**: When using `make docker-run`, the credentials file specified in `GOOGLE_APPLICATION_CREDENTIALS` 
+will be automatically mounted as a read-only volume if the file exists locally.
 
 ### Manage Docker Container
 
