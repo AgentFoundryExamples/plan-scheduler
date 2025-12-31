@@ -1,8 +1,9 @@
 """Application configuration using pydantic BaseSettings."""
 
 import logging
+from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -69,6 +70,7 @@ class Settings(BaseSettings):
             )
 
 
+@lru_cache
 def get_settings() -> Settings:
-    """Get application settings singleton."""
+    """Get cached application settings singleton."""
     return Settings()

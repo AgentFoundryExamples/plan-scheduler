@@ -28,9 +28,6 @@ def setup_logging() -> None:
             """Add custom fields to log records."""
             super().add_fields(log_record, record, message_dict)
             log_record['service'] = settings.SERVICE_NAME
-            log_record['timestamp'] = self.formatTime(record, self.datefmt)
-            log_record['level'] = record.levelname
-            log_record['message'] = record.getMessage()
         
         def format(self, record):
             """Format log record, handling unicode and binary payloads gracefully."""
@@ -60,7 +57,7 @@ def setup_logging() -> None:
     handler.setLevel(logging.INFO)
     
     formatter = CustomJsonFormatter(
-        fmt='%(timestamp)s %(level)s %(service)s %(message)s',
+        fmt='%(timestamp)s %(levelname)s %(name)s %(message)s',
         datefmt='%Y-%m-%dT%H:%M:%S'
     )
     handler.setFormatter(formatter)
@@ -118,6 +115,16 @@ def create_app() -> FastAPI:
     return app
 
 
+def get_app() -> FastAPI:
+    """
+    Get or create the application instance.
+    
+    This function is used by the ASGI server to import the app.
+    It ensures the app is only created when actually needed.
+    """
+    return create_app()
+
+
 # Create app instance for ASGI server to import
 # This is required for uvicorn to find the app with "app.main:app"
-app = create_app()
+app = get_app()
