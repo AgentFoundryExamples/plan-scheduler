@@ -1057,18 +1057,8 @@ def test_process_spec_status_update_finishing_last_spec(mock_transaction_client)
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    def mock_get_with_transaction(transaction=None):
-        # Return appropriate snapshot based on the ref
-        if hasattr(mock_get_with_transaction, "call_count"):
-            mock_get_with_transaction.call_count += 1
-        else:
-            mock_get_with_transaction.call_count = 1
-
-        if mock_get_with_transaction.call_count == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return plan snapshot then spec snapshot
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1140,18 +1130,10 @@ def test_process_spec_status_update_finishing_non_last_spec(mock_transaction_cli
     mock_spec_ref = MagicMock()
     mock_next_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        elif call_counter["count"] == 2:
-            return mock_spec_snapshot
-        else:
-            return mock_next_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(
+        side_effect=[mock_plan_snapshot, mock_spec_snapshot, mock_next_spec_snapshot]
+    )
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_next_spec_ref.get = MagicMock(return_value=mock_next_spec_snapshot)
 
@@ -1236,15 +1218,8 @@ def test_process_spec_status_update_failed_spec(mock_transaction_client):
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1310,15 +1285,8 @@ def test_process_spec_status_update_intermediate_status(mock_transaction_client)
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1381,15 +1349,8 @@ def test_process_spec_status_update_out_of_order_finished(mock_transaction_clien
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1451,15 +1412,8 @@ def test_process_spec_status_update_duplicate_message_id(mock_transaction_client
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1515,15 +1469,8 @@ def test_process_spec_status_update_history_entry_contents(mock_transaction_clie
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1594,15 +1541,8 @@ def test_process_spec_status_update_manual_retry_after_failure(mock_transaction_
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1673,15 +1613,8 @@ def test_process_spec_status_update_terminal_status_protection(mock_transaction_
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1770,15 +1703,8 @@ def test_process_spec_status_update_spec_not_found(mock_transaction_client):
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1833,15 +1759,8 @@ def test_process_spec_status_update_with_null_stage(mock_transaction_client):
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1909,15 +1828,8 @@ def test_process_spec_status_update_with_large_payload(mock_transaction_client):
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1978,15 +1890,8 @@ def test_process_spec_status_update_with_special_char_message_id(mock_transactio
     mock_plan_ref = MagicMock()
     mock_spec_ref = MagicMock()
 
-    call_counter = {"count": 0}
-
-    def mock_get_with_transaction(transaction=None):
-        call_counter["count"] += 1
-        if call_counter["count"] == 1:
-            return mock_plan_snapshot
-        return mock_spec_snapshot
-
-    mock_plan_ref.get = mock_get_with_transaction
+    # Setup get calls to return snapshots in order
+    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
