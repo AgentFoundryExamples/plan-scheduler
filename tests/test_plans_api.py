@@ -14,7 +14,7 @@
 """Tests for plan ingestion API endpoints."""
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -52,32 +52,63 @@ def valid_plan_payload():
     }
 
 
-def test_create_plan_success_returns_201(client, valid_plan_payload):
+@pytest.fixture
+def mock_dependencies():
+    """Mock all dependencies for create_plan."""
+    with patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs, patch(
+        "app.dependencies.get_cached_settings"
+    ) as mock_settings, patch("app.dependencies.get_execution_service") as mock_exec, patch(
+        "app.dependencies.get_firestore_client"
+    ) as mock_client:
+        # Setup default mocks
+        settings = MagicMock()
+        settings.EXECUTION_ENABLED = False  # Default to disabled for most tests
+        mock_settings.return_value = settings
+
+        exec_service = MagicMock()
+        mock_exec.return_value = exec_service
+
+        client_mock = MagicMock()
+        mock_client.return_value = client_mock
+
+        yield {
+            "create_fs": mock_create_fs,
+            "settings": mock_settings,
+            "exec_service": mock_exec,
+            "client": mock_client,
+        }
+
+
+def test_create_plan_success_returns_201(client, valid_plan_payload, mock_dependencies):
     """Test that creating a new plan returns 201 Created."""
-    with patch("app.dependencies.create_plan") as mock_create:
-        mock_create.return_value = (PlanIngestionOutcome.CREATED, valid_plan_payload["id"])
+    mock_dependencies["create_fs"].return_value = (
+        PlanIngestionOutcome.CREATED,
+        valid_plan_payload["id"],
+    )
 
-        response = client.post("/plans", json=valid_plan_payload)
+    response = client.post("/plans", json=valid_plan_payload)
 
-        assert response.status_code == 201
-        data = response.json()
-        assert data["plan_id"] == valid_plan_payload["id"]
-        assert data["status"] == "running"
-        mock_create.assert_called_once()
+    assert response.status_code == 201
+    data = response.json()
+    assert data["plan_id"] == valid_plan_payload["id"]
+    assert data["status"] == "running"
+    mock_dependencies["create_fs"].assert_called_once()
 
 
-def test_create_plan_idempotent_returns_200(client, valid_plan_payload):
+def test_create_plan_idempotent_returns_200(client, valid_plan_payload, mock_dependencies):
     """Test that idempotent ingestion returns 200 OK."""
-    with patch("app.dependencies.create_plan") as mock_create:
-        mock_create.return_value = (PlanIngestionOutcome.IDENTICAL, valid_plan_payload["id"])
+    mock_dependencies["create_fs"].return_value = (
+        PlanIngestionOutcome.IDENTICAL,
+        valid_plan_payload["id"],
+    )
 
-        response = client.post("/plans", json=valid_plan_payload)
+    response = client.post("/plans", json=valid_plan_payload)
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["plan_id"] == valid_plan_payload["id"]
-        assert data["status"] == "running"
-        mock_create.assert_called_once()
+    assert response.status_code == 200
+    data = response.json()
+    assert data["plan_id"] == valid_plan_payload["id"]
+    assert data["status"] == "running"
+    mock_dependencies["create_fs"].assert_called_once()
 
 
 def test_create_plan_conflict_returns_409(client, valid_plan_payload):

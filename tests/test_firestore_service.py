@@ -766,3 +766,188 @@ def test_create_plan_with_specs_uses_string_doc_ids_for_specs(
     assert len(spec_doc_calls) == 2
     assert spec_doc_calls[0][0][0] == "0"
     assert spec_doc_calls[1][0][0] == "1"
+
+
+# Tests for execution trigger integration
+
+
+def test_create_plan_with_specs_sets_execution_metadata_for_spec_0(
+    mock_firestore_client, sample_plan_in
+):
+    """Test that spec 0 gets execution metadata when trigger_first_spec=True."""
+    from app.services.firestore_service import create_plan_with_specs
+
+    # Mock plan doesn't exist
+    mock_doc_ref = MagicMock()
+    mock_doc_snapshot = MagicMock()
+    mock_doc_snapshot.exists = False
+    mock_doc_ref.get.return_value = mock_doc_snapshot
+
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
+    mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+
+    create_plan_with_specs(sample_plan_in, mock_firestore_client, trigger_first_spec=True)
+
+    # Check the spec status in transaction.create calls
+    create_calls = mock_transaction.create.call_args_list
+    assert len(create_calls) == 3  # 1 plan + 2 specs
+
+    # Second call is spec 0 - should have execution metadata set
+    spec0_data = create_calls[1][0][1]
+    assert spec0_data["status"] == "running"
+    assert spec0_data["spec_index"] == 0
+    assert spec0_data["execution_attempts"] == 1
+    assert spec0_data["last_execution_at"] is not None
+
+    # Third call is spec 1 - should remain blocked with zero attempts
+    spec1_data = create_calls[2][0][1]
+    assert spec1_data["status"] == "blocked"
+    assert spec1_data["spec_index"] == 1
+    assert spec1_data["execution_attempts"] == 0
+    assert spec1_data["last_execution_at"] is None
+
+
+def test_create_plan_with_specs_no_execution_metadata_when_flag_false(
+    mock_firestore_client, sample_plan_in
+):
+    """Test that spec 0 doesn't get execution metadata when trigger_first_spec=False."""
+    from app.services.firestore_service import create_plan_with_specs
+
+    # Mock plan doesn't exist
+    mock_doc_ref = MagicMock()
+    mock_doc_snapshot = MagicMock()
+    mock_doc_snapshot.exists = False
+    mock_doc_ref.get.return_value = mock_doc_snapshot
+
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
+    mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+
+    create_plan_with_specs(sample_plan_in, mock_firestore_client, trigger_first_spec=False)
+
+    # Check the spec status in transaction.create calls
+    create_calls = mock_transaction.create.call_args_list
+    assert len(create_calls) == 3  # 1 plan + 2 specs
+
+    # Second call is spec 0 - should NOT have execution metadata set
+    spec0_data = create_calls[1][0][1]
+    assert spec0_data["status"] == "running"
+    assert spec0_data["spec_index"] == 0
+    assert spec0_data["execution_attempts"] == 0
+    assert spec0_data["last_execution_at"] is None
+
+
+def test_delete_plan_with_specs_deletes_plan_and_all_specs(mock_firestore_client, sample_plan_in):
+    """Test that delete_plan_with_specs deletes plan and all spec documents."""
+    from app.services.firestore_service import delete_plan_with_specs
+
+    # Mock plan and specs
+    mock_doc_ref = MagicMock()
+    mock_spec_doc_1 = MagicMock()
+    mock_spec_doc_2 = MagicMock()
+    mock_spec_doc_1.reference = MagicMock()
+    mock_spec_doc_2.reference = MagicMock()
+
+    mock_specs_collection = MagicMock()
+    mock_specs_collection.stream.return_value = [mock_spec_doc_1, mock_spec_doc_2]
+    mock_doc_ref.collection.return_value = mock_specs_collection
+
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
+    mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+
+    delete_plan_with_specs(sample_plan_in.id, mock_firestore_client)
+
+    # Verify transaction.delete was called for both specs and the plan
+    assert mock_transaction.delete.call_count == 3  # 2 specs + 1 plan
+    # First two deletes are for specs
+    mock_transaction.delete.assert_any_call(mock_spec_doc_1.reference)
+    mock_transaction.delete.assert_any_call(mock_spec_doc_2.reference)
+    # Last delete is for plan
+    mock_transaction.delete.assert_any_call(mock_doc_ref)
+
+
+def test_delete_plan_with_specs_handles_empty_specs(mock_firestore_client):
+    """Test that delete_plan_with_specs handles plans with no specs."""
+    from app.services.firestore_service import delete_plan_with_specs
+
+    plan_id = "test-plan-id"
+    mock_doc_ref = MagicMock()
+    mock_specs_collection = MagicMock()
+    mock_specs_collection.stream.return_value = []  # No specs
+    mock_doc_ref.collection.return_value = mock_specs_collection
+
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
+    mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+
+    delete_plan_with_specs(plan_id, mock_firestore_client)
+
+    # Only plan should be deleted
+    assert mock_transaction.delete.call_count == 1
+    mock_transaction.delete.assert_called_with(mock_doc_ref)
+
+
+def test_delete_plan_with_specs_handles_firestore_errors(mock_firestore_client):
+    """Test that delete_plan_with_specs handles Firestore errors."""
+    from app.services.firestore_service import FirestoreOperationError, delete_plan_with_specs
+
+    plan_id = "test-plan-id"
+    mock_doc_ref = MagicMock()
+    mock_specs_collection = MagicMock()
+    mock_specs_collection.stream.side_effect = gcp_exceptions.DeadlineExceeded("Timeout")
+    mock_doc_ref.collection.return_value = mock_specs_collection
+
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
+    mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+
+    with pytest.raises(FirestoreOperationError) as exc_info:
+        delete_plan_with_specs(plan_id, mock_firestore_client)
+
+    assert "Firestore API error" in str(exc_info.value)
+
+
+def test_delete_plan_with_specs_uses_default_client_when_none_provided(
+    mock_settings, mock_firestore_client
+):
+    """Test that delete_plan_with_specs uses get_client() when client not provided."""
+    from app.services.firestore_service import delete_plan_with_specs
+
+    plan_id = "test-plan-id"
+    mock_doc_ref = MagicMock()
+    mock_specs_collection = MagicMock()
+    mock_specs_collection.stream.return_value = []
+    mock_doc_ref.collection.return_value = mock_specs_collection
+
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
+    mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+
+    # Call without client parameter
+    delete_plan_with_specs(plan_id)
+
+    # Should use cached client
+    assert mock_transaction.delete.called
+
+
+def test_delete_plan_with_specs_logs_deletion(mock_firestore_client, caplog):
+    """Test that delete_plan_with_specs logs successful deletion."""
+    from app.services.firestore_service import delete_plan_with_specs
+
+    plan_id = "test-plan-id"
+    mock_doc_ref = MagicMock()
+    mock_specs_collection = MagicMock()
+    mock_specs_collection.stream.return_value = []
+    mock_doc_ref.collection.return_value = mock_specs_collection
+
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
+    mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+
+    with caplog.at_level(logging.INFO):
+        delete_plan_with_specs(plan_id, mock_firestore_client)
+
+    info_messages = [record.message for record in caplog.records if record.levelname == "INFO"]
+    assert any("Deleted plan" in msg and plan_id in msg for msg in info_messages)
