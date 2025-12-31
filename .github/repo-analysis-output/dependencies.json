@@ -73,6 +73,34 @@
       }
     },
     {
+      "id": "app/models/__init__.py",
+      "path": "app/models/__init__.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [],
+        "third-party": []
+      }
+    },
+    {
+      "id": "app/models/plan.py",
+      "path": "app/models/plan.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "datetime.UTC",
+          "datetime.datetime",
+          "typing.Any",
+          "uuid.UUID"
+        ],
+        "third-party": [
+          "pydantic.BaseModel",
+          "pydantic.Field",
+          "pydantic.field_validator",
+          "pydantic.model_validator"
+        ]
+      }
+    },
+    {
       "id": "app/services/__init__.py",
       "path": "app/services/__init__.py",
       "type": "file",
@@ -163,6 +191,22 @@
         ],
         "third-party": []
       }
+    },
+    {
+      "id": "tests/test_plan_models.py",
+      "path": "tests/test_plan_models.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "datetime.UTC",
+          "datetime.datetime",
+          "uuid.uuid4"
+        ],
+        "third-party": [
+          "pydantic.ValidationError",
+          "pytest"
+        ]
+      }
     }
   ],
   "edges": [
@@ -183,6 +227,10 @@
       "target": "app/config.py"
     },
     {
+      "source": "app/models/__init__.py",
+      "target": "app/models/plan.py"
+    },
+    {
       "source": "app/services/firestore_service.py",
       "target": "app/config.py"
     },
@@ -201,18 +249,27 @@
     {
       "source": "tests/test_logging.py",
       "target": "app/main.py"
+    },
+    {
+      "source": "tests/test_plan_models.py",
+      "target": "app/models/plan.py"
     }
   ],
   "external_dependencies_summary": {
     "stdlib": [
       "contextlib.asynccontextmanager",
+      "datetime.UTC",
+      "datetime.datetime",
       "functools.lru_cache",
       "logging",
       "os",
       "sys",
+      "typing.Any",
       "unittest.mock.MagicMock",
       "unittest.mock.patch",
-      "uuid"
+      "uuid",
+      "uuid.UUID",
+      "uuid.uuid4"
     ],
     "third-party": [
       "fastapi.APIRouter",
@@ -221,14 +278,17 @@
       "google.api_core.exceptions",
       "google.auth.exceptions",
       "google.cloud.firestore",
+      "pydantic.BaseModel",
       "pydantic.Field",
       "pydantic.ValidationError",
+      "pydantic.field_validator",
+      "pydantic.model_validator",
       "pydantic_settings.BaseSettings",
       "pydantic_settings.SettingsConfigDict",
       "pytest",
       "pythonjsonlogger.json.JsonFormatter"
     ],
-    "stdlib_count": 8,
-    "third-party_count": 12
+    "stdlib_count": 13,
+    "third-party_count": 15
   }
 }

@@ -4,7 +4,7 @@ Heuristic summaries of source files based on filenames, extensions, and paths.
 
 Schema Version: 2.0
 
-Total files: 13
+Total files: 16
 
 ## app/__init__.py
 **Language:** Python  
@@ -58,6 +58,24 @@ Total files: 13
 **Summary:** Python main entry point (role: entry-point)  
 **Size:** 4.29 KB  
 **LOC:** 85  
+**TODOs/FIXMEs:** 0  
+
+## app/models/__init__.py
+**Language:** Python  
+**Role:** module-init  
+**Role Justification:** module initialization file '__init__'  
+**Summary:** Python module initialization (role: module-init)  
+**Size:** 0.96 KB  
+**LOC:** 19  
+**TODOs/FIXMEs:** 0  
+
+## app/models/plan.py
+**Language:** Python  
+**Role:** implementation  
+**Role Justification:** general implementation file (default classification)  
+**Summary:** Python module for plan  
+**Size:** 9.39 KB  
+**LOC:** 210  
 **TODOs/FIXMEs:** 0  
 
 ## app/services/__init__.py
@@ -121,4 +139,13 @@ Total files: 13
 **Summary:** Python test file (role: test)  
 **Size:** 4.81 KB  
 **LOC:** 104  
+**TODOs/FIXMEs:** 0  
+
+## tests/test_plan_models.py
+**Language:** Python  
+**Role:** test  
+**Role Justification:** filename starts with 'test_'  
+**Summary:** Python test file (role: test)  
+**Size:** 26.07 KB  
+**LOC:** 597  
 **TODOs/FIXMEs:** 0  
