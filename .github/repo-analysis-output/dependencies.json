@@ -51,7 +51,9 @@
       "type": "file",
       "external_dependencies": {
         "stdlib": [],
-        "third-party": []
+        "third-party": [
+          "google.cloud.firestore"
+        ]
       }
     },
     {
@@ -67,6 +69,33 @@
         "third-party": [
           "fastapi.FastAPI",
           "pythonjsonlogger.json.JsonFormatter"
+        ]
+      }
+    },
+    {
+      "id": "app/services/__init__.py",
+      "path": "app/services/__init__.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [],
+        "third-party": []
+      }
+    },
+    {
+      "id": "app/services/firestore_service.py",
+      "path": "app/services/firestore_service.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "functools.lru_cache",
+          "logging",
+          "typing.Optional",
+          "uuid"
+        ],
+        "third-party": [
+          "google.api_core.exceptions",
+          "google.auth.exceptions",
+          "google.cloud.firestore"
         ]
       }
     },
@@ -91,6 +120,25 @@
         ],
         "third-party": [
           "pydantic.ValidationError",
+          "pytest"
+        ]
+      }
+    },
+    {
+      "id": "tests/test_firestore_service.py",
+      "path": "tests/test_firestore_service.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "logging",
+          "os",
+          "unittest.mock.MagicMock",
+          "unittest.mock.PropertyMock",
+          "unittest.mock.patch"
+        ],
+        "third-party": [
+          "google.api_core.exceptions",
+          "google.auth.exceptions",
           "pytest"
         ]
       }
@@ -128,6 +176,10 @@
       "target": "app/config.py"
     },
     {
+      "source": "app/dependencies.py",
+      "target": "app/services/firestore_service.py"
+    },
+    {
       "source": "app/main.py",
       "target": "app/api/health.py"
     },
@@ -136,8 +188,16 @@
       "target": "app/config.py"
     },
     {
+      "source": "app/services/firestore_service.py",
+      "target": "app/config.py"
+    },
+    {
       "source": "tests/test_config.py",
       "target": "app/config.py"
+    },
+    {
+      "source": "tests/test_firestore_service.py",
+      "target": "app/services/firestore_service.py"
     },
     {
       "source": "tests/test_health.py",
@@ -155,12 +215,19 @@
       "logging",
       "os",
       "sys",
-      "unittest.mock.patch"
+      "typing.Optional",
+      "unittest.mock.MagicMock",
+      "unittest.mock.PropertyMock",
+      "unittest.mock.patch",
+      "uuid"
     ],
     "third-party": [
       "fastapi.APIRouter",
       "fastapi.FastAPI",
       "fastapi.testclient.TestClient",
+      "google.api_core.exceptions",
+      "google.auth.exceptions",
+      "google.cloud.firestore",
       "pydantic.Field",
       "pydantic.ValidationError",
       "pydantic_settings.BaseSettings",
@@ -168,7 +235,7 @@
       "pytest",
       "pythonjsonlogger.json.JsonFormatter"
     ],
-    "stdlib_count": 6,
-    "third-party_count": 9
+    "stdlib_count": 10,
+    "third-party_count": 12
   }
 }

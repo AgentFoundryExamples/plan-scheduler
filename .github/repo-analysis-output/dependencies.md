@@ -8,31 +8,38 @@ Includes classification of external dependencies as stdlib vs third-party.
 
 ## Statistics
 
-- **Total files**: 10
-- **Intra-repo dependencies**: 6
-- **External stdlib dependencies**: 6
-- **External third-party dependencies**: 9
+- **Total files**: 13
+- **Intra-repo dependencies**: 9
+- **External stdlib dependencies**: 10
+- **External third-party dependencies**: 12
 
 ## External Dependencies
 
 ### Standard Library / Core Modules
 
-Total: 6 unique modules
+Total: 10 unique modules
 
 - `contextlib.asynccontextmanager`
 - `functools.lru_cache`
 - `logging`
 - `os`
 - `sys`
+- `typing.Optional`
+- `unittest.mock.MagicMock`
+- `unittest.mock.PropertyMock`
 - `unittest.mock.patch`
+- `uuid`
 
 ### Third-Party Packages
 
-Total: 9 unique packages
+Total: 12 unique packages
 
 - `fastapi.APIRouter`
 - `fastapi.FastAPI`
 - `fastapi.testclient.TestClient`
+- `google.api_core.exceptions`
+- `google.auth.exceptions`
+- `google.cloud.firestore`
 - `pydantic.Field`
 - `pydantic.ValidationError`
 - `pydantic_settings.BaseSettings`
@@ -42,14 +49,17 @@ Total: 9 unique packages
 
 ## Most Depended Upon Files (Intra-Repo)
 
-- `app/config.py` (3 dependents)
+- `app/config.py` (4 dependents)
+- `app/services/firestore_service.py` (2 dependents)
 - `app/main.py` (2 dependents)
 - `app/api/health.py` (1 dependents)
 
 ## Files with Most Dependencies (Intra-Repo)
 
+- `app/dependencies.py` (2 dependencies)
 - `app/main.py` (2 dependencies)
-- `app/dependencies.py` (1 dependencies)
+- `app/services/firestore_service.py` (1 dependencies)
 - `tests/test_config.py` (1 dependencies)
+- `tests/test_firestore_service.py` (1 dependencies)
 - `tests/test_health.py` (1 dependencies)
 - `tests/test_logging.py` (1 dependencies)
