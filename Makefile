@@ -72,7 +72,7 @@ docker-run:
 	@# Extract GOOGLE_APPLICATION_CREDENTIALS from .env if it exists
 	@CREDS_PATH=$$(grep "^GOOGLE_APPLICATION_CREDENTIALS=" .env | cut -d '=' -f2); \
 	VOLUME_MOUNT=""; \
-	if [ -n "$$CREDS_PATH" ] && [ "$$CREDS_PATH" != "" ] && [ -f "$$CREDS_PATH" ]; then \
+	if [ -n "$$CREDS_PATH" ] && [ -f "$$CREDS_PATH" ]; then \
 		VOLUME_MOUNT="-v $$CREDS_PATH:$$CREDS_PATH:ro"; \
 		echo "Mounting credentials file: $$CREDS_PATH"; \
 	fi; \
