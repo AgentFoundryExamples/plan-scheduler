@@ -34,9 +34,7 @@ Future HTTP Integration:
 """
 
 import logging
-from datetime import datetime
 from typing import Any
-from uuid import UUID
 
 from app.config import get_settings
 from app.models.plan import SpecRecord
@@ -149,14 +147,7 @@ class ExecutionService:
         Returns:
             Dictionary with all fields serialized to JSON-safe types
         """
-        # Use pydantic's model_dump to get a dict representation
-        spec_dict = spec_data.model_dump()
-
-        # Convert datetime fields to ISO 8601 strings
-        for key, value in spec_dict.items():
-            if isinstance(value, datetime):
-                spec_dict[key] = value.isoformat()
-            elif isinstance(value, UUID):
-                spec_dict[key] = str(value)
-
-        return spec_dict
+        # Use pydantic's model_dump with mode='json' to get a dict representation
+        # with JSON-compatible types (e.g., datetime -> str, UUID -> str).
+        # This handles nested structures and custom types automatically.
+        return spec_data.model_dump(mode="json")

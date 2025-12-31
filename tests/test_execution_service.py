@@ -43,27 +43,34 @@ def sample_spec_record() -> SpecRecord:
 
 
 @pytest.fixture
-def execution_service_enabled():
-    """Create ExecutionService with EXECUTION_ENABLED=True."""
-    with patch.dict(os.environ, {"EXECUTION_ENABLED": "true"}, clear=False):
-        from app.config import get_settings
+def execution_service_factory():
+    """Factory fixture to create an ExecutionService with a specific config."""
 
-        get_settings.cache_clear()
-        service = ExecutionService()
-        yield service
-        get_settings.cache_clear()
+    def _factory(enabled: bool):
+        with patch.dict(os.environ, {"EXECUTION_ENABLED": str(enabled).lower()}):
+            from app.config import get_settings
+
+            get_settings.cache_clear()
+            service = ExecutionService()
+            return service
+
+    yield _factory
+    # Final cache clear after all tests using the factory are done
+    from app.config import get_settings
+
+    get_settings.cache_clear()
 
 
 @pytest.fixture
-def execution_service_disabled():
-    """Create ExecutionService with EXECUTION_ENABLED=False."""
-    with patch.dict(os.environ, {"EXECUTION_ENABLED": "false"}, clear=False):
-        from app.config import get_settings
+def execution_service_enabled(execution_service_factory):
+    """Create ExecutionService with EXECUTION_ENABLED=True."""
+    return execution_service_factory(enabled=True)
 
-        get_settings.cache_clear()
-        service = ExecutionService()
-        yield service
-        get_settings.cache_clear()
+
+@pytest.fixture
+def execution_service_disabled(execution_service_factory):
+    """Create ExecutionService with EXECUTION_ENABLED=False."""
+    return execution_service_factory(enabled=False)
 
 
 def test_execution_service_initialization():
@@ -191,9 +198,9 @@ def test_serialize_spec_data_converts_datetime_to_iso_string(execution_service_e
     assert isinstance(serialized["created_at"], str)
     assert isinstance(serialized["updated_at"], str)
 
-    # Check ISO 8601 format
-    assert serialized["created_at"] == "2024-01-01T12:00:00+00:00"
-    assert serialized["updated_at"] == "2024-01-01T13:00:00+00:00"
+    # Check ISO 8601 format (pydantic uses 'Z' for UTC timezone)
+    assert serialized["created_at"] == "2024-01-01T12:00:00Z"
+    assert serialized["updated_at"] == "2024-01-01T13:00:00Z"
 
 
 def test_serialize_spec_data_preserves_other_field_types(execution_service_enabled):
