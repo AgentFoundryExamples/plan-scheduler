@@ -524,37 +524,29 @@ def test_create_plan_sets_spec_0_execution_metadata(client, valid_plan_payload):
         assert spec_data.vision == valid_plan_payload["specs"][0]["vision"]
 
 
-def test_create_plan_with_multiple_specs_only_triggers_spec_0(client):
+def test_create_plan_with_multiple_specs_only_triggers_spec_0(client, valid_plan_payload):
     """Test that with multiple specs, only spec 0 gets execution triggered."""
-    plan_payload = {
-        "id": str(uuid.uuid4()),
-        "specs": [
-            {
-                "purpose": "First spec",
-                "vision": "First vision",
-                "must": ["req 1"],
-                "dont": [],
-                "nice": [],
-                "assumptions": [],
-            },
-            {
-                "purpose": "Second spec",
-                "vision": "Second vision",
-                "must": ["req 2"],
-                "dont": [],
-                "nice": [],
-                "assumptions": [],
-            },
-            {
-                "purpose": "Third spec",
-                "vision": "Third vision",
-                "must": ["req 3"],
-                "dont": [],
-                "nice": [],
-                "assumptions": [],
-            },
-        ],
-    }
+    # Extend valid_plan_payload with additional specs
+    plan_payload = valid_plan_payload.copy()
+    plan_payload["specs"] = [
+        valid_plan_payload["specs"][0],
+        {
+            "purpose": "Second spec",
+            "vision": "Second vision",
+            "must": ["req 2"],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+        },
+        {
+            "purpose": "Third spec",
+            "vision": "Third vision",
+            "must": ["req 3"],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+        },
+    ]
 
     with (
         patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
@@ -583,5 +575,5 @@ def test_create_plan_with_multiple_specs_only_triggers_spec_0(client):
 
         # Verify the spec data is for the first spec
         spec_data = call_args[1]["spec_data"]
-        assert spec_data.purpose == "First spec"
-        assert spec_data.vision == "First vision"
+        assert spec_data.purpose == valid_plan_payload["specs"][0]["purpose"]
+        assert spec_data.vision == valid_plan_payload["specs"][0]["vision"]
