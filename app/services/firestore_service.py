@@ -142,9 +142,6 @@ def smoke_test(client: Optional[firestore.Client] = None) -> None:
         )
         logger.error(error_msg)
         raise FirestoreConnectionError(error_msg) from e
-    except FirestoreConnectionError:
-        # Re-raise our own exceptions
-        raise
     except Exception as e:
         # Catch any other unexpected errors
         error_msg = f"Smoke test failed with unexpected error: {str(e)}"
