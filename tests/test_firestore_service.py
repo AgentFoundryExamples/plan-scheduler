@@ -853,19 +853,22 @@ def test_delete_plan_with_specs_deletes_plan_and_all_specs(mock_firestore_client
     mock_specs_collection.stream.return_value = [mock_spec_doc_1, mock_spec_doc_2]
     mock_doc_ref.collection.return_value = mock_specs_collection
 
-    mock_transaction = MagicMock()
-    mock_firestore_client.transaction.return_value = mock_transaction
+    # Mock batch operations
+    mock_batch = MagicMock()
+    mock_firestore_client.batch.return_value = mock_batch
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     delete_plan_with_specs(sample_plan_in.id, mock_firestore_client)
 
-    # Verify transaction.delete was called for both specs and the plan
-    assert mock_transaction.delete.call_count == 3  # 2 specs + 1 plan
+    # Verify batch.delete was called for both specs and the plan
+    assert mock_batch.delete.call_count == 3  # 2 specs + 1 plan
     # First two deletes are for specs
-    mock_transaction.delete.assert_any_call(mock_spec_doc_1.reference)
-    mock_transaction.delete.assert_any_call(mock_spec_doc_2.reference)
+    mock_batch.delete.assert_any_call(mock_spec_doc_1.reference)
+    mock_batch.delete.assert_any_call(mock_spec_doc_2.reference)
     # Last delete is for plan
-    mock_transaction.delete.assert_any_call(mock_doc_ref)
+    mock_batch.delete.assert_any_call(mock_doc_ref)
+    # Verify batch was committed
+    mock_batch.commit.assert_called_once()
 
 
 def test_delete_plan_with_specs_handles_empty_specs(mock_firestore_client):
@@ -878,15 +881,17 @@ def test_delete_plan_with_specs_handles_empty_specs(mock_firestore_client):
     mock_specs_collection.stream.return_value = []  # No specs
     mock_doc_ref.collection.return_value = mock_specs_collection
 
-    mock_transaction = MagicMock()
-    mock_firestore_client.transaction.return_value = mock_transaction
+    # Mock batch operations
+    mock_batch = MagicMock()
+    mock_firestore_client.batch.return_value = mock_batch
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     delete_plan_with_specs(plan_id, mock_firestore_client)
 
     # Only plan should be deleted
-    assert mock_transaction.delete.call_count == 1
-    mock_transaction.delete.assert_called_with(mock_doc_ref)
+    assert mock_batch.delete.call_count == 1
+    mock_batch.delete.assert_called_with(mock_doc_ref)
+    mock_batch.commit.assert_called_once()
 
 
 def test_delete_plan_with_specs_handles_firestore_errors(mock_firestore_client):
@@ -921,15 +926,16 @@ def test_delete_plan_with_specs_uses_default_client_when_none_provided(
     mock_specs_collection.stream.return_value = []
     mock_doc_ref.collection.return_value = mock_specs_collection
 
-    mock_transaction = MagicMock()
-    mock_firestore_client.transaction.return_value = mock_transaction
+    # Mock batch operations
+    mock_batch = MagicMock()
+    mock_firestore_client.batch.return_value = mock_batch
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     # Call without client parameter
     delete_plan_with_specs(plan_id)
 
     # Should use cached client
-    assert mock_transaction.delete.called
+    assert mock_batch.delete.called
 
 
 def test_delete_plan_with_specs_logs_deletion(mock_firestore_client, caplog):
@@ -942,8 +948,9 @@ def test_delete_plan_with_specs_logs_deletion(mock_firestore_client, caplog):
     mock_specs_collection.stream.return_value = []
     mock_doc_ref.collection.return_value = mock_specs_collection
 
-    mock_transaction = MagicMock()
-    mock_firestore_client.transaction.return_value = mock_transaction
+    # Mock batch operations
+    mock_batch = MagicMock()
+    mock_firestore_client.batch.return_value = mock_batch
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     with caplog.at_level(logging.INFO):

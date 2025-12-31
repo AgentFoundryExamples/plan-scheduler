@@ -327,10 +327,12 @@ def delete_plan_with_specs(plan_id: str, client: firestore.Client | None = None)
     but subsequent operations (like execution triggering) fail. It ensures that
     failed ingestions don't leave partial data in Firestore.
 
-    TRANSACTIONAL CLEANUP STRATEGY:
-    Uses a transaction to ensure atomic deletion of the plan document and all
-    associated spec documents. If any deletion fails, the entire operation is
-    rolled back, maintaining database consistency.
+    CLEANUP STRATEGY:
+    Uses batch operations instead of transactions to avoid read-before-write
+    limitations. First reads all spec documents, then deletes them along with
+    the plan document in a single batch. While not strictly transactional,
+    this approach is suitable for cleanup scenarios where partial deletion
+    is acceptable (the plan will be recreated on retry anyway).
 
     Args:
         plan_id: The plan ID to delete
@@ -342,25 +344,24 @@ def delete_plan_with_specs(plan_id: str, client: firestore.Client | None = None)
     if client is None:
         client = get_client()
 
-    @firestore.transactional
-    def delete_in_transaction(transaction):
-        """Transactional function to delete plan and all specs atomically."""
+    try:
+        # Read all spec documents first (outside batch)
         doc_ref = client.collection("plans").document(plan_id)
-
-        # Get all spec documents first
         specs_collection = doc_ref.collection("specs")
-        spec_docs = specs_collection.stream(transaction=transaction)
+        spec_docs = list(specs_collection.stream())
 
-        # Delete all spec documents within the transaction
+        # Use batch to delete all documents
+        batch = client.batch()
+
+        # Delete all spec documents
         for spec_doc in spec_docs:
-            transaction.delete(spec_doc.reference)
+            batch.delete(spec_doc.reference)
 
         # Delete the plan document
-        transaction.delete(doc_ref)
+        batch.delete(doc_ref)
 
-    try:
-        transaction = client.transaction()
-        delete_in_transaction(transaction)
+        # Commit the batch
+        batch.commit()
         logger.info(f"Deleted plan {plan_id} with all specs for cleanup")
     except gcp_exceptions.GoogleAPICallError as e:
         error_msg = f"Firestore API error deleting plan {plan_id}: {str(e)}"

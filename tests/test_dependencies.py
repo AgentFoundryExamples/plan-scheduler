@@ -282,44 +282,7 @@ def test_create_plan_logs_cleanup_failure_but_raises_original_error(
         error_messages = [
             record.message for record in caplog.records if record.levelname == "ERROR"
         ]
-        assert any("Cleanup failed" in msg for msg in error_messages)
-
-
-def test_create_plan_handles_spec_not_found_after_creation(valid_plan_in):
-    """Test create_plan handles case where spec 0 is not found after creation."""
-    with (
-        patch("app.dependencies.get_cached_settings") as mock_settings,
-        patch("app.dependencies.get_execution_service") as mock_exec_service,
-        patch("app.dependencies.get_firestore_client") as mock_client,
-        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
-        patch("app.dependencies.firestore_service.delete_plan_with_specs") as mock_delete,
-    ):
-        # Setup mocks
-        settings = MagicMock()
-        settings.EXECUTION_ENABLED = True
-        mock_settings.return_value = settings
-
-        exec_service = MagicMock()
-        mock_exec_service.return_value = exec_service
-
-        client = MagicMock()
-        spec_doc_snapshot = MagicMock()
-        spec_doc_snapshot.exists = False  # Spec not found
-        client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
-            spec_doc_snapshot
-        )
-        mock_client.return_value = client
-
-        mock_create.return_value = (PlanIngestionOutcome.CREATED, valid_plan_in.id)
-
-        # Call create_plan and expect it to raise
-        with pytest.raises(FirestoreOperationError) as exc_info:
-            create_plan(valid_plan_in)
-
-        assert "Spec 0 not found" in str(exc_info.value)
-
-        # Verify cleanup was called
-        mock_delete.assert_called_once()
+        assert any("CLEANUP FAILED" in msg for msg in error_messages)
 
 
 def test_create_plan_propagates_conflict_error(valid_plan_in):

@@ -123,18 +123,30 @@ def create_plan(plan_in: PlanIn) -> tuple[PlanIngestionOutcome, str]:
             f"Triggering execution for spec 0 of plan {plan_id}",
             extra={"plan_id": plan_id, "spec_index": 0},
         )
-        # Get spec 0 data for triggering (we just created it)
-        spec_doc = (
-            client.collection("plans").document(plan_id).collection("specs").document("0").get()
-        )
-        if not spec_doc.exists:
-            raise firestore_service.FirestoreOperationError(
-                f"Spec 0 not found after creation for plan {plan_id}"
-            )
+        # Construct spec 0 data locally to avoid an extra DB read and eliminate
+        # race conditions. The data was just persisted with these exact values
+        # by create_plan_with_specs.
+        from datetime import UTC, datetime
 
         from app.models.plan import SpecRecord
 
-        spec_data = SpecRecord(**spec_doc.to_dict())
+        spec_0_in = plan_in.specs[0]
+        now = datetime.now(UTC)
+        spec_data = SpecRecord(
+            spec_index=0,
+            purpose=spec_0_in.purpose,
+            vision=spec_0_in.vision,
+            must=spec_0_in.must.copy(),
+            dont=spec_0_in.dont.copy(),
+            nice=spec_0_in.nice.copy(),
+            assumptions=spec_0_in.assumptions.copy(),
+            status="running",
+            created_at=now,
+            updated_at=now,
+            execution_attempts=firestore_service.INITIAL_EXECUTION_ATTEMPT_COUNT,
+            last_execution_at=now,
+            history=[],
+        )
 
         execution_service.trigger_spec_execution(
             plan_id=plan_id,
@@ -157,13 +169,17 @@ def create_plan(plan_in: PlanIn) -> tuple[PlanIngestionOutcome, str]:
             firestore_service.delete_plan_with_specs(plan_id, client=client)
             logger.info(f"Cleanup completed for plan {plan_id}")
         except Exception as cleanup_error:
-            # Log cleanup failure but don't mask the original error
+            # CRITICAL: Cleanup failure means partial data may remain in Firestore.
+            # Subsequent retries with the same plan_id will fail with "plan already exists".
+            # Manual intervention may be required to delete plan {plan_id}.
             logger.error(
-                f"Cleanup failed for plan {plan_id} after execution trigger failure",
+                f"CLEANUP FAILED for plan {plan_id} after execution trigger failure. "
+                f"Partial data may remain in Firestore. Manual cleanup may be required.",
                 extra={
                     "plan_id": plan_id,
                     "cleanup_error": str(cleanup_error),
                     "original_error": str(e),
+                    "action_required": "manual_cleanup",
                 },
                 exc_info=True,
             )
