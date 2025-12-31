@@ -121,23 +121,24 @@ def test_create_plan_success_with_execution_enabled(valid_plan_in, mock_spec_rec
         assert call_args[1]["spec_index"] == 0
 
 
-def test_create_plan_success_with_execution_disabled(valid_plan_in):
-    """Test create_plan succeeds without triggering execution when disabled."""
+def test_create_plan_success_with_execution_disabled(valid_plan_in, mock_spec_record):
+    """Test create_plan calls trigger which handles execution disabled internally."""
     with (
-        patch("app.dependencies.get_cached_settings") as mock_settings,
         patch("app.dependencies.get_execution_service") as mock_exec_service,
         patch("app.dependencies.get_firestore_client") as mock_client,
         patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
     ):
         # Setup mocks
-        settings = MagicMock()
-        settings.EXECUTION_ENABLED = False
-        mock_settings.return_value = settings
-
         exec_service = MagicMock()
         mock_exec_service.return_value = exec_service
 
         client = MagicMock()
+        spec_doc_snapshot = MagicMock()
+        spec_doc_snapshot.exists = True
+        spec_doc_snapshot.to_dict.return_value = mock_spec_record.model_dump()
+        client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
+            spec_doc_snapshot
+        )
         mock_client.return_value = client
 
         mock_create.return_value = (PlanIngestionOutcome.CREATED, valid_plan_in.id)
@@ -149,8 +150,8 @@ def test_create_plan_success_with_execution_disabled(valid_plan_in):
         assert outcome == PlanIngestionOutcome.CREATED
         assert plan_id == valid_plan_in.id
 
-        # Verify execution trigger was NOT called
-        exec_service.trigger_spec_execution.assert_not_called()
+        # Verify execution trigger WAS called (ExecutionService handles the disable logic)
+        exec_service.trigger_spec_execution.assert_called_once()
 
 
 def test_create_plan_idempotent_skips_execution_trigger(valid_plan_in):
@@ -419,23 +420,24 @@ def test_create_plan_logs_execution_trigger_attempt(valid_plan_in, mock_spec_rec
         assert any("Triggering execution for spec 0" in msg for msg in info_messages)
 
 
-def test_create_plan_logs_execution_disabled_skip(valid_plan_in, caplog):
-    """Test create_plan logs skip message when execution is disabled."""
+def test_create_plan_logs_execution_disabled_skip(valid_plan_in, mock_spec_record, caplog):
+    """Test create_plan always calls trigger (ExecutionService logs skip when disabled)."""
     with (
-        patch("app.dependencies.get_cached_settings") as mock_settings,
         patch("app.dependencies.get_execution_service") as mock_exec_service,
         patch("app.dependencies.get_firestore_client") as mock_client,
         patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create,
     ):
         # Setup mocks
-        settings = MagicMock()
-        settings.EXECUTION_ENABLED = False
-        mock_settings.return_value = settings
-
         exec_service = MagicMock()
         mock_exec_service.return_value = exec_service
 
         client = MagicMock()
+        spec_doc_snapshot = MagicMock()
+        spec_doc_snapshot.exists = True
+        spec_doc_snapshot.to_dict.return_value = mock_spec_record.model_dump()
+        client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
+            spec_doc_snapshot
+        )
         mock_client.return_value = client
 
         mock_create.return_value = (PlanIngestionOutcome.CREATED, valid_plan_in.id)
@@ -444,6 +446,5 @@ def test_create_plan_logs_execution_disabled_skip(valid_plan_in, caplog):
         with caplog.at_level(logging.INFO):
             create_plan(valid_plan_in)
 
-        # Verify skip was logged
-        info_messages = [record.message for record in caplog.records if record.levelname == "INFO"]
-        assert any("Execution disabled" in msg for msg in info_messages)
+        # Verify trigger was called (ExecutionService handles the disable logic internally)
+        exec_service.trigger_spec_execution.assert_called_once()

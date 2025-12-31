@@ -55,26 +55,47 @@ def valid_plan_payload():
 @pytest.fixture
 def mock_dependencies():
     """Mock all dependencies for create_plan."""
+    from datetime import UTC, datetime
+
+    from app.models.plan import SpecRecord
+
     with (
         patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
-        patch("app.dependencies.get_cached_settings") as mock_settings,
         patch("app.dependencies.get_execution_service") as mock_exec,
         patch("app.dependencies.get_firestore_client") as mock_client,
     ):
         # Setup default mocks
-        settings = MagicMock()
-        settings.EXECUTION_ENABLED = False  # Default to disabled for most tests
-        mock_settings.return_value = settings
-
         exec_service = MagicMock()
         mock_exec.return_value = exec_service
 
+        # Create a mock spec record for the spec 0 fetch
+        mock_spec_record = SpecRecord(
+            spec_index=0,
+            purpose="Test purpose",
+            vision="Test vision",
+            must=["requirement 1"],
+            dont=["avoid this"],
+            nice=["nice to have"],
+            assumptions=["assume this"],
+            status="running",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            execution_attempts=1,
+            last_execution_at=datetime.now(UTC),
+            history=[],
+        )
+
         client_mock = MagicMock()
+        spec_doc_snapshot = MagicMock()
+        spec_doc_snapshot.exists = True
+        spec_doc_snapshot.to_dict.return_value = mock_spec_record.model_dump()
+        client_mock.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
+            spec_doc_snapshot
+        )
         mock_client.return_value = client_mock
 
         yield {
             "create_fs": mock_create_fs,
-            "settings": mock_settings,
             "exec_service": mock_exec,
             "client": mock_client,
         }

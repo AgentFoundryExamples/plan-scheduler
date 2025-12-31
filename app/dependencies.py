@@ -76,9 +76,11 @@ def create_plan(plan_in: PlanIn) -> tuple[PlanIngestionOutcome, str]:
     interfere with each other's cleanup operations.
 
     EXECUTION TOGGLE BEHAVIOR:
+    ExecutionService.trigger_spec_execution handles the EXECUTION_ENABLED toggle:
     - When EXECUTION_ENABLED=True: Trigger execution for newly created plans
-    - When EXECUTION_ENABLED=False: Skip trigger but still persist spec 0 as "running"
-      with execution metadata set (this maintains deterministic status for testing)
+    - When EXECUTION_ENABLED=False: Skip trigger with logged rationale
+    In both cases, spec 0 is persisted as "running" with execution metadata set
+    to maintain deterministic status for testing.
 
     IDEMPOTENCY:
     - For idempotent ingestions (identical payload), we skip execution triggering
@@ -95,7 +97,6 @@ def create_plan(plan_in: PlanIn) -> tuple[PlanIngestionOutcome, str]:
         firestore_service.FirestoreOperationError: When Firestore operation fails
         Exception: When execution trigger fails (after cleanup is attempted)
     """
-    settings = get_cached_settings()
     execution_service = get_execution_service()
     client = get_firestore_client()
 
@@ -113,41 +114,33 @@ def create_plan(plan_in: PlanIn) -> tuple[PlanIngestionOutcome, str]:
         return outcome, plan_id
 
     # Step 3: For new plans, attempt to trigger execution for spec 0
-    # If EXECUTION_ENABLED is False, the trigger is logged but skipped
+    # ExecutionService handles the EXECUTION_ENABLED toggle internally:
+    # - If enabled: triggers execution
+    # - If disabled: logs skip message and returns
     # If trigger raises an exception, we clean up the persisted plan/specs
     try:
-        if settings.EXECUTION_ENABLED:
-            logger.info(
-                f"Triggering execution for spec 0 of plan {plan_id}",
-                extra={"plan_id": plan_id, "spec_index": 0},
+        logger.info(
+            f"Triggering execution for spec 0 of plan {plan_id}",
+            extra={"plan_id": plan_id, "spec_index": 0},
+        )
+        # Get spec 0 data for triggering (we just created it)
+        spec_doc = (
+            client.collection("plans").document(plan_id).collection("specs").document("0").get()
+        )
+        if not spec_doc.exists:
+            raise firestore_service.FirestoreOperationError(
+                f"Spec 0 not found after creation for plan {plan_id}"
             )
-            # Get spec 0 data for triggering (we just created it)
-            spec_doc = (
-                client.collection("plans").document(plan_id).collection("specs").document("0").get()
-            )
-            if not spec_doc.exists:
-                raise firestore_service.FirestoreOperationError(
-                    f"Spec 0 not found after creation for plan {plan_id}"
-                )
 
-            from app.models.plan import SpecRecord
+        from app.models.plan import SpecRecord
 
-            spec_data = SpecRecord(**spec_doc.to_dict())
+        spec_data = SpecRecord(**spec_doc.to_dict())
 
-            execution_service.trigger_spec_execution(
-                plan_id=plan_id,
-                spec_index=0,
-                spec_data=spec_data,
-            )
-        else:
-            logger.info(
-                f"Execution disabled, skipping trigger for spec 0 of plan {plan_id}",
-                extra={
-                    "plan_id": plan_id,
-                    "spec_index": 0,
-                    "execution_enabled": False,
-                },
-            )
+        execution_service.trigger_spec_execution(
+            plan_id=plan_id,
+            spec_index=0,
+            spec_data=spec_data,
+        )
     except Exception as e:
         # Step 4: CLEANUP - If execution trigger fails, delete all persisted documents
         # This ensures failed ingestions don't leave partial data
