@@ -66,7 +66,11 @@
       "path": "app/dependencies.py",
       "type": "file",
       "external_dependencies": {
-        "stdlib": [],
+        "stdlib": [
+          "datetime.UTC",
+          "datetime.datetime",
+          "logging"
+        ],
         "third-party": [
           "google.cloud.firestore"
         ]
@@ -186,6 +190,24 @@
       }
     },
     {
+      "id": "tests/test_dependencies.py",
+      "path": "tests/test_dependencies.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "datetime.UTC",
+          "datetime.datetime",
+          "logging",
+          "unittest.mock.MagicMock",
+          "unittest.mock.patch",
+          "uuid"
+        ],
+        "third-party": [
+          "pytest"
+        ]
+      }
+    },
+    {
       "id": "tests/test_execution_service.py",
       "path": "tests/test_execution_service.py",
       "type": "file",
@@ -266,6 +288,9 @@
       "type": "file",
       "external_dependencies": {
         "stdlib": [
+          "datetime.UTC",
+          "datetime.datetime",
+          "unittest.mock.MagicMock",
           "unittest.mock.patch",
           "uuid"
         ],
@@ -300,6 +325,10 @@
     {
       "source": "app/dependencies.py",
       "target": "app/services/firestore_service.py"
+    },
+    {
+      "source": "app/dependencies.py",
+      "target": "app/services/execution_service.py"
     },
     {
       "source": "app/main.py",
@@ -342,6 +371,18 @@
       "target": "app/config.py"
     },
     {
+      "source": "tests/test_dependencies.py",
+      "target": "app/dependencies.py"
+    },
+    {
+      "source": "tests/test_dependencies.py",
+      "target": "app/models/plan.py"
+    },
+    {
+      "source": "tests/test_dependencies.py",
+      "target": "app/services/firestore_service.py"
+    },
+    {
       "source": "tests/test_execution_service.py",
       "target": "app/models/plan.py"
     },
@@ -380,6 +421,10 @@
     {
       "source": "tests/test_plans_api.py",
       "target": "app/services/firestore_service.py"
+    },
+    {
+      "source": "tests/test_plans_api.py",
+      "target": "app/models/plan.py"
     }
   ],
   "external_dependencies_summary": {

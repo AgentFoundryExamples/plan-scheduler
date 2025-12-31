@@ -160,6 +160,10 @@
         },
         {
           "type": "file",
+          "name": "test_dependencies.py"
+        },
+        {
+          "type": "file",
           "name": "test_execution_service.py"
         },
         {

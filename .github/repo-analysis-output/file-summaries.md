@@ -4,7 +4,7 @@ Heuristic summaries of source files based on filenames, extensions, and paths.
 
 Schema Version: 2.0
 
-Total files: 20
+Total files: 21
 
 ## app/__init__.py
 **Language:** Python  
@@ -38,7 +38,7 @@ Total files: 20
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for plans  
-**Size:** 5.70 KB  
+**Size:** 5.80 KB  
 **LOC:** 131  
 **TODOs/FIXMEs:** 0  
 
@@ -56,8 +56,8 @@ Total files: 20
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for dependencies  
-**Size:** 2.12 KB  
-**LOC:** 37  
+**Size:** 7.08 KB  
+**LOC:** 126  
 **TODOs/FIXMEs:** 0  
 
 ## app/main.py
@@ -83,8 +83,8 @@ Total files: 20
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for plan  
-**Size:** 10.30 KB  
-**LOC:** 234  
+**Size:** 10.28 KB  
+**LOC:** 232  
 **TODOs/FIXMEs:** 0  
 
 ## app/services/__init__.py
@@ -110,8 +110,8 @@ Total files: 20
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for firestore service  
-**Size:** 17.43 KB  
-**LOC:** 325  
+**Size:** 20.51 KB  
+**LOC:** 378  
 **TODOs/FIXMEs:** 0  
 
 ## tests/__init__.py
@@ -132,6 +132,15 @@ Total files: 20
 **LOC:** 107  
 **TODOs/FIXMEs:** 0  
 
+## tests/test_dependencies.py
+**Language:** Python  
+**Role:** test  
+**Role Justification:** filename starts with 'test_'  
+**Summary:** Python test file (role: test)  
+**Size:** 16.06 KB  
+**LOC:** 289  
+**TODOs/FIXMEs:** 0  
+
 ## tests/test_execution_service.py
 **Language:** Python  
 **Role:** test  
@@ -146,8 +155,8 @@ Total files: 20
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 29.19 KB  
-**LOC:** 511  
+**Size:** 36.68 KB  
+**LOC:** 635  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_health.py
@@ -182,6 +191,6 @@ Total files: 20
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 11.75 KB  
-**LOC:** 248  
+**Size:** 13.37 KB  
+**LOC:** 292  
 **TODOs/FIXMEs:** 0  
