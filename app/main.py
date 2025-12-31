@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pythonjsonlogger.json import JsonFormatter
 
-from app.api import health, plans
+from app.api import health, plans, pubsub
 from app.config import get_settings
 
 
@@ -119,6 +119,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(health.router)
     app.include_router(plans.router)
+    app.include_router(pubsub.router)
 
     logger.info(f"Application created: service={settings.SERVICE_NAME}, " f"port={settings.PORT}")
 
