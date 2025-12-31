@@ -46,6 +46,11 @@ class Settings(BaseSettings):
         default="", description="Token for verifying Pub/Sub requests"
     )
 
+    # Execution service configuration
+    EXECUTION_ENABLED: bool = Field(
+        default=True, description="Enable or disable execution service triggers"
+    )
+
     def model_post_init(self, __context):
         """Log warnings for missing critical configuration after initialization."""
         logger = logging.getLogger(__name__)

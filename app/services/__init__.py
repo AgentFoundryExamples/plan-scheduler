@@ -12,3 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Services package for external integrations."""
+
+from app.services.execution_service import ExecutionService
+
+__all__ = ["ExecutionService"]
