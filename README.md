@@ -456,6 +456,179 @@ Response:
 }
 ```
 
+### Pub/Sub Webhook
+
+**POST /pubsub/spec-status**
+
+Receives and processes Pub/Sub push notifications for spec status updates. This endpoint implements the core orchestration flow for updating plan and spec status based on execution feedback.
+
+**Authentication:** Requires `x-goog-pubsub-verification-token` header matching the `PUBSUB_VERIFICATION_TOKEN` environment variable. Returns 401 Unauthorized if token is missing or invalid.
+
+#### Request Headers
+
+- `x-goog-pubsub-verification-token` (required): Verification token from Pub/Sub subscription configuration
+
+#### Request Body
+
+The request body must match the Pub/Sub push envelope structure:
+
+```json
+{
+  "message": {
+    "data": "base64-encoded-payload",
+    "messageId": "unique-message-id",
+    "publishTime": "2025-01-01T12:00:00Z",
+    "attributes": {}
+  },
+  "subscription": "projects/project-id/subscriptions/subscription-name"
+}
+```
+
+The `message.data` field contains a base64-encoded JSON payload:
+
+```json
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+  "spec_index": 0,
+  "status": "finished",
+  "stage": "implementation"
+}
+```
+
+**Payload Fields:**
+
+- `plan_id` (string, required): Plan identifier as a valid UUID string
+- `spec_index` (integer, required): Zero-based index of the spec in the plan
+- `status` (string, required): Execution status - `"blocked"`, `"running"`, `"finished"`, or `"failed"`
+- `stage` (string, optional): Execution stage/phase information (e.g., "implementation", "reviewing")
+
+#### Response Codes
+
+- **204 No Content**: Status update processed successfully (including duplicates and not-found scenarios)
+- **401 Unauthorized**: Invalid or missing verification token
+- **400 Bad Request**: Invalid payload (invalid base64, malformed JSON, validation errors)
+- **500 Internal Server Error**: Server-side error (Firestore unavailable, etc.)
+
+#### Status Processing Semantics
+
+**Finished Status:**
+- Marks the spec as finished
+- Updates plan counters (`completed_specs`, `current_spec_index`)
+- Unblocks the next spec (changes status from `blocked` to `running`)
+- Triggers execution for the next spec via ExecutionService
+- If this is the last spec:
+  - Sets `plan.overall_status` to `"finished"`
+  - Sets `plan.current_spec_index` to `null`
+  - No further specs are triggered
+
+**Failed Status:**
+- Marks the spec as failed
+- Sets `plan.overall_status` to `"failed"`
+- Records in history
+- No further specs are triggered
+
+**Intermediate Statuses (blocked, running, or custom stages):**
+- Updates the `current_stage` field on the spec
+- Appends to history
+- Main `status` field remains unchanged
+- Supports manual retries and detailed progress tracking
+
+#### Idempotency and Ordering
+
+The endpoint implements robust idempotency and ordering guarantees:
+
+1. **Duplicate Message Detection**: Uses `messageId` in history to detect and skip duplicate Pub/Sub messages on retries
+2. **Terminal Status Protection**: Prevents duplicate terminal statuses (e.g., finishing a spec that's already finished)
+3. **Out-of-Order Detection**: Aborts transaction if a later spec tries to finish before an earlier spec
+4. **History Tracking**: Every status update creates a history entry with timestamp, status, stage, messageId, and raw payload snippet
+
+#### Error Handling
+
+- **Missing Plan/Spec**: Logged and returns 204 (graceful handling)
+- **Firestore Errors**: Logged and returns 500
+- **ExecutionService Failures**: Logged but don't fail the request (transaction already committed)
+- **Transaction Contention**: Automatically retried by Firestore
+
+#### Example Usage
+
+**Using curl:**
+
+```bash
+# First, encode the payload
+PAYLOAD='{"plan_id":"550e8400-e29b-41d4-a716-446655440000","spec_index":0,"status":"finished"}'
+ENCODED=$(echo -n "$PAYLOAD" | base64)
+
+# Send the Pub/Sub push request
+curl -X POST http://localhost:8080/pubsub/spec-status \
+  -H "Content-Type: application/json" \
+  -H "x-goog-pubsub-verification-token: your-verification-token" \
+  -d '{
+    "message": {
+      "data": "'"$ENCODED"'",
+      "messageId": "test-msg-123",
+      "publishTime": "2025-01-01T12:00:00Z"
+    },
+    "subscription": "projects/test-project/subscriptions/test-sub"
+  }'
+```
+
+**Using Python with httpx:**
+
+```python
+import base64
+import httpx
+import json
+
+payload = {
+    "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+    "spec_index": 0,
+    "status": "finished",
+    "stage": "implementation"
+}
+
+# Encode payload
+encoded_data = base64.b64encode(json.dumps(payload).encode()).decode()
+
+envelope = {
+    "message": {
+        "data": encoded_data,
+        "messageId": "test-msg-123",
+        "publishTime": "2025-01-01T12:00:00Z",
+        "attributes": {}
+    },
+    "subscription": "projects/test-project/subscriptions/test-sub"
+}
+
+response = httpx.post(
+    "http://localhost:8080/pubsub/spec-status",
+    json=envelope,
+    headers={"x-goog-pubsub-verification-token": "your-verification-token"}
+)
+
+print(f"Status: {response.status_code}")
+```
+
+#### Pub/Sub Subscription Configuration
+
+To configure a Pub/Sub push subscription to call this endpoint:
+
+```bash
+# Create a Pub/Sub topic
+gcloud pubsub topics create spec-status-updates
+
+# Create a push subscription
+gcloud pubsub subscriptions create spec-status-push \
+  --topic=spec-status-updates \
+  --push-endpoint=https://your-service-url/pubsub/spec-status \
+  --push-auth-token-header=x-goog-pubsub-verification-token=your-verification-token
+
+# For Cloud Run with IAM authentication (more secure):
+gcloud pubsub subscriptions create spec-status-push \
+  --topic=spec-status-updates \
+  --push-endpoint=https://your-service-url/pubsub/spec-status \
+  --push-auth-service-account=SERVICE_ACCOUNT_EMAIL
+```
+
 ### Plan Ingestion
 
 **POST /plans**
@@ -594,9 +767,18 @@ plans/{plan_id}/specs/{index}            # Spec subcollection documents
 ├── nice: [...]
 ├── assumptions: [...]
 ├── status: "running" | "blocked" | "finished" | "failed"
+├── current_stage: "implementation" | "reviewing" | ...  # Optional, updated by Pub/Sub
 ├── created_at: "2025-01-01T12:00:00Z"
 ├── updated_at: "2025-01-01T12:00:00Z"
-└── history: []
+└── history: [                          # Status history from Pub/Sub updates
+     {
+       "timestamp": "2025-01-01T12:00:00Z",
+       "received_status": "running",
+       "stage": "implementation",
+       "message_id": "msg-123",
+       "raw_snippet": { ... }
+     }
+   ]
 ```
 
 **Status Rules:**
@@ -606,6 +788,7 @@ plans/{plan_id}/specs/{index}            # Spec subcollection documents
 - Plan `overall_status` is set to `"running"` on creation
 - Plan `current_spec_index` is set to `0` (pointing to the first spec)
 - Plan `completed_specs` is initialized to `0`
+- Pub/Sub updates advance specs through lifecycle and populate history
 
 #### Example Usage
 
