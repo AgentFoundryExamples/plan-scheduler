@@ -356,6 +356,146 @@ class TestSpecRecord:
         errors = exc_info.value.errors()
         assert any("spec_index" in str(e) for e in errors)
 
+    def test_spec_record_execution_attempts_defaults_to_zero(self):
+        """Test SpecRecord defaults execution_attempts to 0."""
+        now = datetime.now(UTC)
+        record = SpecRecord(
+            spec_index=0,
+            purpose="Test",
+            vision="Test",
+            status="blocked",
+            created_at=now,
+            updated_at=now,
+        )
+
+        assert record.execution_attempts == 0
+
+    def test_spec_record_last_execution_at_defaults_to_none(self):
+        """Test SpecRecord defaults last_execution_at to None."""
+        now = datetime.now(UTC)
+        record = SpecRecord(
+            spec_index=0,
+            purpose="Test",
+            vision="Test",
+            status="blocked",
+            created_at=now,
+            updated_at=now,
+        )
+
+        assert record.last_execution_at is None
+
+    def test_spec_record_execution_attempts_with_value(self):
+        """Test SpecRecord accepts positive execution_attempts."""
+        now = datetime.now(UTC)
+        record = SpecRecord(
+            spec_index=0,
+            purpose="Test",
+            vision="Test",
+            status="running",
+            created_at=now,
+            updated_at=now,
+            execution_attempts=3,
+        )
+
+        assert record.execution_attempts == 3
+
+    def test_spec_record_execution_attempts_rejects_negative(self):
+        """Test SpecRecord validates execution_attempts is non-negative."""
+        now = datetime.now(UTC)
+
+        with pytest.raises(ValidationError) as exc_info:
+            SpecRecord(
+                spec_index=0,
+                purpose="Test",
+                vision="Test",
+                status="blocked",
+                created_at=now,
+                updated_at=now,
+                execution_attempts=-1,
+            )
+
+        errors = exc_info.value.errors()
+        assert any("execution_attempts" in str(e) for e in errors)
+
+    def test_spec_record_last_execution_at_with_timestamp(self):
+        """Test SpecRecord accepts timezone-aware last_execution_at timestamp."""
+        now = datetime.now(UTC)
+        execution_time = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
+        record = SpecRecord(
+            spec_index=0,
+            purpose="Test",
+            vision="Test",
+            status="running",
+            created_at=now,
+            updated_at=now,
+            execution_attempts=1,
+            last_execution_at=execution_time,
+        )
+
+        assert record.last_execution_at == execution_time
+        assert record.last_execution_at.tzinfo == UTC
+
+    def test_spec_record_last_execution_at_converts_naive_to_utc(self):
+        """Test SpecRecord converts naive last_execution_at to UTC."""
+        now = datetime.now(UTC)
+        naive_time = datetime(2025, 1, 15, 10, 30, 0)
+
+        record = SpecRecord.model_validate(
+            {
+                "spec_index": 0,
+                "purpose": "Test",
+                "vision": "Test",
+                "status": "running",
+                "created_at": now,
+                "updated_at": now,
+                "execution_attempts": 1,
+                "last_execution_at": naive_time,
+            }
+        )
+
+        assert record.last_execution_at.tzinfo == UTC
+
+    def test_spec_record_backward_compatibility_missing_execution_fields(self):
+        """Test SpecRecord loads old documents without execution metadata fields."""
+        now = datetime.now(UTC)
+
+        # Simulate old document without execution metadata fields
+        old_doc = {
+            "spec_index": 0,
+            "purpose": "Test",
+            "vision": "Test",
+            "status": "blocked",
+            "created_at": now,
+            "updated_at": now,
+            "history": [],
+        }
+
+        record = SpecRecord.model_validate(old_doc)
+
+        assert record.execution_attempts == 0
+        assert record.last_execution_at is None
+
+    def test_spec_record_serialization_includes_execution_fields(self):
+        """Test SpecRecord serialization includes execution metadata fields."""
+        now = datetime.now(UTC)
+        execution_time = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
+        record = SpecRecord(
+            spec_index=0,
+            purpose="Test",
+            vision="Test",
+            status="running",
+            created_at=now,
+            updated_at=now,
+            execution_attempts=2,
+            last_execution_at=execution_time,
+        )
+
+        data = record.model_dump()
+        assert "execution_attempts" in data
+        assert "last_execution_at" in data
+        assert data["execution_attempts"] == 2
+        assert data["last_execution_at"] == execution_time
+
 
 class TestPlanRecord:
     """Tests for PlanRecord model."""
@@ -583,6 +723,27 @@ class TestCreateInitialSpecRecord:
         assert record.dont == []
         assert record.nice == []
         assert record.assumptions == []
+
+    def test_create_initial_spec_record_initializes_execution_metadata(self):
+        """Test factory initializes execution metadata fields with correct defaults."""
+        spec_in = SpecIn(purpose="Test", vision="Test")
+
+        record = create_initial_spec_record(spec_in, spec_index=0)
+
+        assert record.execution_attempts == 0
+        assert record.last_execution_at is None
+
+    def test_create_initial_spec_record_execution_fields_in_serialized_output(self):
+        """Test factory creates record with execution fields that serialize correctly."""
+        spec_in = SpecIn(purpose="Test", vision="Test")
+
+        record = create_initial_spec_record(spec_in, spec_index=0)
+        data = record.model_dump()
+
+        assert "execution_attempts" in data
+        assert "last_execution_at" in data
+        assert data["execution_attempts"] == 0
+        assert data["last_execution_at"] is None
 
 
 class TestCreateInitialPlanRecord:
