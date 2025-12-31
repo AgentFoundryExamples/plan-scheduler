@@ -495,6 +495,25 @@ def test_check_plan_exists_missing_raw_request_same_spec_count(
     assert any("missing raw_request" in msg for msg in caplog.messages)
 
 
+def test_check_plan_exists_empty_document_raises_error(mock_firestore_client, sample_plan_in):
+    """Test that empty document raises FirestoreOperationError."""
+    from app.services.firestore_service import FirestoreOperationError, _check_plan_exists
+
+    mock_doc_ref = MagicMock()
+    mock_doc_snapshot = MagicMock()
+    mock_doc_snapshot.exists = True
+    # Document exists but is empty
+    mock_doc_snapshot.to_dict.return_value = None
+
+    mock_doc_ref.get.return_value = mock_doc_snapshot
+    mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+
+    with pytest.raises(FirestoreOperationError) as exc_info:
+        _check_plan_exists(mock_firestore_client, sample_plan_in.id, sample_plan_in)
+
+    assert "exists but is empty" in str(exc_info.value)
+
+
 def test_check_plan_exists_missing_raw_request_different_spec_count(
     mock_firestore_client, sample_plan_in
 ):
@@ -543,8 +562,8 @@ def test_create_plan_with_specs_creates_new_plan(mock_firestore_client, sample_p
     mock_doc_snapshot.exists = False
     mock_doc_ref.get.return_value = mock_doc_snapshot
 
-    mock_batch = MagicMock()
-    mock_firestore_client.batch.return_value = mock_batch
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     with caplog.at_level(logging.INFO):
@@ -553,9 +572,8 @@ def test_create_plan_with_specs_creates_new_plan(mock_firestore_client, sample_p
     assert outcome == PlanIngestionOutcome.CREATED
     assert plan_id == sample_plan_in.id
 
-    # Verify batch operations
-    assert mock_batch.set.call_count == 3  # 1 plan + 2 specs
-    mock_batch.commit.assert_called_once()
+    # Verify transaction operations
+    assert mock_transaction.create.call_count == 3  # 1 plan + 2 specs
 
     # Verify logging
     assert any("Created plan" in msg for msg in caplog.messages)
@@ -573,30 +591,30 @@ def test_create_plan_with_specs_first_spec_running_others_blocked(
     mock_doc_snapshot.exists = False
     mock_doc_ref.get.return_value = mock_doc_snapshot
 
-    mock_batch = MagicMock()
-    mock_firestore_client.batch.return_value = mock_batch
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     create_plan_with_specs(sample_plan_in, mock_firestore_client)
 
-    # Check the spec status in batch.set calls
-    set_calls = mock_batch.set.call_args_list
-    assert len(set_calls) == 3  # 1 plan + 2 specs
+    # Check the spec status in transaction.create calls
+    create_calls = mock_transaction.create.call_args_list
+    assert len(create_calls) == 3  # 1 plan + 2 specs
 
     # First call is plan metadata
-    plan_data = set_calls[0][0][1]
+    plan_data = create_calls[0][0][1]
     assert plan_data["overall_status"] == "running"
     assert plan_data["current_spec_index"] == 0
     assert plan_data["total_specs"] == 2
     assert plan_data["completed_specs"] == 0
 
     # Second call is spec 0 - should be running
-    spec0_data = set_calls[1][0][1]
+    spec0_data = create_calls[1][0][1]
     assert spec0_data["status"] == "running"
     assert spec0_data["spec_index"] == 0
 
     # Third call is spec 1 - should be blocked
-    spec1_data = set_calls[2][0][1]
+    spec1_data = create_calls[2][0][1]
     assert spec1_data["status"] == "blocked"
     assert spec1_data["spec_index"] == 1
 
@@ -613,8 +631,8 @@ def test_create_plan_with_specs_idempotent_success(mock_firestore_client, sample
     mock_doc_snapshot.to_dict.return_value = {"raw_request": raw_request, "total_specs": 2}
     mock_doc_ref.get.return_value = mock_doc_snapshot
 
-    mock_batch = MagicMock()
-    mock_firestore_client.batch.return_value = mock_batch
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     with caplog.at_level(logging.INFO):
@@ -623,8 +641,8 @@ def test_create_plan_with_specs_idempotent_success(mock_firestore_client, sample
     assert outcome == PlanIngestionOutcome.IDENTICAL
     assert plan_id == sample_plan_in.id
 
-    # Verify batch was NOT committed (no duplicate writes)
-    mock_batch.commit.assert_not_called()
+    # Verify transaction.create was NOT called (no duplicate writes)
+    mock_transaction.create.assert_not_called()
 
     # Verify logging
     assert any("already exists with identical payload" in msg for msg in caplog.messages)
@@ -653,7 +671,7 @@ def test_create_plan_with_specs_raises_conflict(mock_firestore_client, sample_pl
 
 
 def test_create_plan_with_specs_handles_batch_failure(mock_firestore_client, sample_plan_in):
-    """Test that create_plan_with_specs handles batch commit failures."""
+    """Test that create_plan_with_specs handles transaction failures."""
     from app.services.firestore_service import FirestoreOperationError, create_plan_with_specs
 
     # Mock plan doesn't exist
@@ -662,9 +680,10 @@ def test_create_plan_with_specs_handles_batch_failure(mock_firestore_client, sam
     mock_doc_snapshot.exists = False
     mock_doc_ref.get.return_value = mock_doc_snapshot
 
-    mock_batch = MagicMock()
-    mock_batch.commit.side_effect = gcp_exceptions.DeadlineExceeded("Timeout")
-    mock_firestore_client.batch.return_value = mock_batch
+    # Make transaction.create raise an error
+    mock_transaction = MagicMock()
+    mock_transaction.create.side_effect = gcp_exceptions.DeadlineExceeded("Timeout")
+    mock_firestore_client.transaction.return_value = mock_transaction
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     with pytest.raises(FirestoreOperationError) as exc_info:
@@ -685,8 +704,8 @@ def test_create_plan_with_specs_uses_default_client_when_none_provided(
     mock_doc_snapshot.exists = False
     mock_doc_ref.get.return_value = mock_doc_snapshot
 
-    mock_batch = MagicMock()
-    mock_firestore_client.batch.return_value = mock_batch
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     # Call without client parameter
@@ -706,15 +725,15 @@ def test_create_plan_with_specs_stores_raw_request(mock_firestore_client, sample
     mock_doc_snapshot.exists = False
     mock_doc_ref.get.return_value = mock_doc_snapshot
 
-    mock_batch = MagicMock()
-    mock_firestore_client.batch.return_value = mock_batch
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     create_plan_with_specs(sample_plan_in, mock_firestore_client)
 
     # Check the plan data stored
-    set_calls = mock_batch.set.call_args_list
-    plan_data = set_calls[0][0][1]
+    create_calls = mock_transaction.create.call_args_list
+    plan_data = create_calls[0][0][1]
 
     assert "raw_request" in plan_data
     assert plan_data["raw_request"]["id"] == sample_plan_in.id
@@ -736,8 +755,8 @@ def test_create_plan_with_specs_uses_string_doc_ids_for_specs(
     mock_spec_collection = MagicMock()
     mock_doc_ref.collection.return_value = mock_spec_collection
 
-    mock_batch = MagicMock()
-    mock_firestore_client.batch.return_value = mock_batch
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
     mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
 
     create_plan_with_specs(sample_plan_in, mock_firestore_client)
