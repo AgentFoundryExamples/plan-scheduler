@@ -43,7 +43,19 @@ class Settings(BaseSettings):
 
     # Pub/Sub configuration
     PUBSUB_VERIFICATION_TOKEN: str = Field(
-        default="", description="Token for verifying Pub/Sub requests"
+        default="",
+        description=(
+            "Token for verifying Pub/Sub push requests. REQUIRED for security. "
+            "This token should be sent by Pub/Sub in the x-goog-pubsub-verification-token header."
+        ),
+    )
+
+    PUBSUB_JWT_VERIFICATION_ENABLED: bool = Field(
+        default=False,
+        description=(
+            "Enable JWT verification for Pub/Sub push requests. "
+            "When enabled, verifies JWT tokens in addition to the verification token."
+        ),
     )
 
     # Execution service configuration
@@ -52,7 +64,7 @@ class Settings(BaseSettings):
     )
 
     def model_post_init(self, __context):
-        """Log warnings for missing critical configuration after initialization."""
+        """Validate critical configuration and fail fast if required values are missing."""
         logger = logging.getLogger(__name__)
 
         if not self.FIRESTORE_PROJECT_ID:
@@ -67,10 +79,13 @@ class Settings(BaseSettings):
                 "GCP authentication may fail."
             )
 
-        if not self.PUBSUB_VERIFICATION_TOKEN:
-            logger.warning(
-                "PUBSUB_VERIFICATION_TOKEN not set, using empty string as default. "
-                "Pub/Sub request verification will be disabled."
+        # Fail fast if PUBSUB_VERIFICATION_TOKEN is unset or empty
+        if not self.PUBSUB_VERIFICATION_TOKEN or not self.PUBSUB_VERIFICATION_TOKEN.strip():
+            raise ValueError(
+                "PUBSUB_VERIFICATION_TOKEN is required but not set or empty. "
+                "The service cannot start without a verification token for "
+                "securing Pub/Sub endpoints. "
+                "Set this environment variable to a secure random token."
             )
 
 
