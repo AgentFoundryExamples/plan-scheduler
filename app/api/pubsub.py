@@ -14,6 +14,7 @@
 """Pub/Sub webhook endpoint for spec status updates."""
 
 import logging
+import secrets
 
 from fastapi import APIRouter, Header, HTTPException, Response, status
 from pydantic import ValidationError
@@ -106,7 +107,9 @@ async def spec_status_update(
             detail="Invalid or missing verification token",
         )
 
-    if x_goog_pubsub_verification_token != settings.PUBSUB_VERIFICATION_TOKEN:
+    if not secrets.compare_digest(
+        x_goog_pubsub_verification_token, settings.PUBSUB_VERIFICATION_TOKEN
+    ):
         logger.warning(
             "Pub/Sub verification token mismatch",
             extra={"message_id": envelope.message.messageId},

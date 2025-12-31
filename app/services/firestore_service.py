@@ -685,17 +685,19 @@ def process_spec_status_update(
             )
             return
 
-        # Detect later spec finishing before earlier spec (only for "finished" status)
+        # Detect out-of-order spec finishing (only for "finished" status)
+        # Only the current spec should be allowed to finish
         if status == "finished":
             current_spec_index = plan_data.get("current_spec_index")
-            if current_spec_index is not None and spec_index > current_spec_index:
+            if current_spec_index is not None and spec_index != current_spec_index:
                 result["action"] = "out_of_order"
                 result["message"] = (
-                    f"Spec {spec_index} finishing before spec {current_spec_index}, aborting"
+                    f"Spec {spec_index} finishing out of order. "
+                    f"Expected current spec is {current_spec_index}."
                 )
                 logger.error(
                     f"Out-of-order spec completion detected: spec {spec_index} finishing "
-                    f"before current spec {current_spec_index} in plan {plan_id}",
+                    f"while current spec is {current_spec_index} in plan {plan_id}",
                     extra={
                         "plan_id": plan_id,
                         "spec_index": spec_index,
