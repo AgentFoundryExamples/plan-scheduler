@@ -22,7 +22,7 @@ router = APIRouter(tags=["health"])
 async def health_check() -> dict:
     """
     Health check endpoint.
-    
+
     Returns:
         dict: Status indicating service is healthy
     """
