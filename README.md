@@ -441,10 +441,7 @@ The Firestore service provides clear, actionable error messages:
 
 ## API Endpoints
 
-**Interactive API Documentation:** The service provides auto-generated API documentation via FastAPI's built-in OpenAPI support:
-- **Swagger UI**: http://localhost:8080/docs (interactive API explorer)
-- **ReDoc**: http://localhost:8080/redoc (alternative documentation view)
-- **OpenAPI Schema**: http://localhost:8080/openapi.json (machine-readable specification)
+**Interactive API Documentation:** The service provides auto-generated API documentation via FastAPI's built-in OpenAPI support. See the [Run the Service](#3-run-the-service) section for documentation URLs (`/docs`, `/redoc`, `/openapi.json`).
 
 ### Health Check
 
