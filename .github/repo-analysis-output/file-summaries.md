@@ -4,7 +4,7 @@ Heuristic summaries of source files based on filenames, extensions, and paths.
 
 Schema Version: 2.0
 
-Total files: 18
+Total files: 20
 
 ## app/__init__.py
 **Language:** Python  
@@ -47,8 +47,8 @@ Total files: 18
 **Role:** configuration  
 **Role Justification:** configuration file name 'config'  
 **Summary:** Python configuration file (role: configuration)  
-**Size:** 2.58 KB  
-**LOC:** 43  
+**Size:** 2.74 KB  
+**LOC:** 46  
 **TODOs/FIXMEs:** 0  
 
 ## app/dependencies.py
@@ -92,9 +92,18 @@ Total files: 18
 **Role:** module-init  
 **Role Justification:** module initialization file '__init__'  
 **Summary:** Python module initialization (role: module-init)  
-**Size:** 0.61 KB  
-**LOC:** 1  
+**Size:** 0.70 KB  
+**LOC:** 3  
 **TODOs/FIXMEs:** 0  
+
+## app/services/execution_service.py
+**Language:** Python  
+**Role:** implementation  
+**Role Justification:** general implementation file (default classification)  
+**Summary:** Python module for execution service  
+**Size:** 6.14 KB  
+**LOC:** 107  
+**TODOs/FIXMEs:** 4  
 
 ## app/services/firestore_service.py
 **Language:** Python  
@@ -119,8 +128,17 @@ Total files: 18
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 4.87 KB  
-**LOC:** 92  
+**Size:** 5.61 KB  
+**LOC:** 107  
+**TODOs/FIXMEs:** 0  
+
+## tests/test_execution_service.py
+**Language:** Python  
+**Role:** test  
+**Role Justification:** filename starts with 'test_'  
+**Summary:** Python test file (role: test)  
+**Size:** 14.75 KB  
+**LOC:** 345  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_firestore_service.py

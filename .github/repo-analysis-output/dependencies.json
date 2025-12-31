@@ -126,6 +126,18 @@
       }
     },
     {
+      "id": "app/services/execution_service.py",
+      "path": "app/services/execution_service.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "logging",
+          "typing.Any"
+        ],
+        "third-party": []
+      }
+    },
+    {
       "id": "app/services/firestore_service.py",
       "path": "app/services/firestore_service.py",
       "type": "file",
@@ -169,6 +181,23 @@
         ],
         "third-party": [
           "pydantic.ValidationError",
+          "pytest"
+        ]
+      }
+    },
+    {
+      "id": "tests/test_execution_service.py",
+      "path": "tests/test_execution_service.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "datetime.UTC",
+          "datetime.datetime",
+          "logging",
+          "os",
+          "unittest.mock.patch"
+        ],
+        "third-party": [
           "pytest"
         ]
       }
@@ -289,6 +318,18 @@
       "target": "app/models/plan.py"
     },
     {
+      "source": "app/services/__init__.py",
+      "target": "app/services/execution_service.py"
+    },
+    {
+      "source": "app/services/execution_service.py",
+      "target": "app/config.py"
+    },
+    {
+      "source": "app/services/execution_service.py",
+      "target": "app/models/plan.py"
+    },
+    {
       "source": "app/services/firestore_service.py",
       "target": "app/config.py"
     },
@@ -298,6 +339,18 @@
     },
     {
       "source": "tests/test_config.py",
+      "target": "app/config.py"
+    },
+    {
+      "source": "tests/test_execution_service.py",
+      "target": "app/models/plan.py"
+    },
+    {
+      "source": "tests/test_execution_service.py",
+      "target": "app/services/execution_service.py"
+    },
+    {
+      "source": "tests/test_execution_service.py",
       "target": "app/config.py"
     },
     {
