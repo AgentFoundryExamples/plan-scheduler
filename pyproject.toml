@@ -13,6 +13,7 @@ uvicorn = {extras = ["standard"], version = "^0.34.0"}
 pydantic = "^2.10.5"
 pydantic-settings = "^2.7.1"
 python-json-logger = "^3.2.1"
+google-cloud-firestore = "^2.22.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
