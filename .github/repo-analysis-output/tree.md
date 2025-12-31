@@ -1,4 +1,4 @@
-# agent-foundry-template
+# plan-scheduler
 
 ├── .github
   ├── af-config

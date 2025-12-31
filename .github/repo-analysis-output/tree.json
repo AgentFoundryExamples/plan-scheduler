@@ -1,6 +1,6 @@
 {
   "type": "directory",
-  "name": "agent-foundry-template",
+  "name": "plan-scheduler",
   "children": [
     {
       "type": "directory",
