@@ -534,3 +534,320 @@ def create_plan_with_specs(
         error_msg = f"Firestore API error creating plan {plan_id}: {str(e)}"
         logger.error(error_msg)
         raise FirestoreOperationError(error_msg) from e
+
+
+def process_spec_status_update(
+    plan_id: str,
+    spec_index: int,
+    status: str,
+    stage: str | None,
+    message_id: str,
+    raw_payload_snippet: dict[str, Any],
+    client: firestore.Client | None = None,
+) -> dict[str, Any]:
+    """
+    Process a spec status update transactionally.
+
+    This function implements the core orchestration logic for Pub/Sub status updates:
+    1. Load plan and target spec within a transaction
+    2. Verify ordering (detect out-of-order or stale terminal events)
+    3. Check for duplicate messageIds to prevent double-processing
+    4. Append status history entry with timestamp, status, stage, messageId, raw snippet
+    5. Update spec and plan fields based on status type:
+       - "finished": Mark spec finished, advance plan, trigger next spec
+       - "failed": Mark spec/plan failed, no further triggers
+       - Intermediate statuses: Update stage field, keep main status unchanged
+
+    TRANSACTION STRATEGY:
+    Uses Firestore transactions to ensure atomicity. All reads must happen before writes.
+    The transaction will retry automatically on contention.
+
+    ORDERING VALIDATION:
+    - Detects if a later spec finishes before an earlier spec
+    - Detects duplicate terminal statuses (finished/failed after already terminal)
+    - Aborts transaction and logs errors for invalid ordering
+
+    Args:
+        plan_id: Plan ID as UUID string
+        spec_index: Zero-based index of the spec
+        status: New status value (blocked, running, finished, failed)
+        stage: Optional execution stage/phase information
+        message_id: Pub/Sub message ID for deduplication
+        raw_payload_snippet: Snippet of raw payload for history
+        client: Optional Firestore client (uses get_client() if not provided)
+
+    Returns:
+        Dictionary with processing result:
+        {
+            "success": True/False,
+            "action": "updated"/"duplicate"/"out_of_order"/"not_found",
+            "next_spec_triggered": True/False (only for finished status),
+            "plan_finished": True/False (only when plan completes),
+            "message": "descriptive message"
+        }
+
+    Raises:
+        FirestoreOperationError: When Firestore operation fails
+    """
+    if client is None:
+        client = get_client()
+
+    result = {
+        "success": False,
+        "action": "unknown",
+        "next_spec_triggered": False,
+        "plan_finished": False,
+        "message": "",
+    }
+
+    @firestore.transactional
+    def update_in_transaction(transaction):
+        """Transactional function to update plan and spec atomically."""
+        nonlocal result
+        now = datetime.now(UTC)
+
+        # Step 1: Load plan document
+        plan_ref = client.collection("plans").document(plan_id)
+        plan_snapshot = plan_ref.get(transaction=transaction)
+
+        if not plan_snapshot.exists:
+            result["action"] = "not_found"
+            result["message"] = f"Plan {plan_id} not found"
+            logger.warning(
+                f"Plan {plan_id} not found during status update",
+                extra={"plan_id": plan_id, "spec_index": spec_index, "status": status},
+            )
+            return
+
+        plan_data = plan_snapshot.to_dict()
+        if not plan_data:
+            raise FirestoreOperationError(f"Plan document {plan_id} exists but is empty")
+
+        # Step 2: Load spec document
+        spec_ref = plan_ref.collection("specs").document(str(spec_index))
+        spec_snapshot = spec_ref.get(transaction=transaction)
+
+        if not spec_snapshot.exists:
+            result["action"] = "not_found"
+            result["message"] = f"Spec {spec_index} not found in plan {plan_id}"
+            logger.warning(
+                f"Spec {spec_index} not found in plan {plan_id}",
+                extra={"plan_id": plan_id, "spec_index": spec_index, "status": status},
+            )
+            return
+
+        spec_data = spec_snapshot.to_dict()
+        if not spec_data:
+            raise FirestoreOperationError(
+                f"Spec document {plan_id}/specs/{spec_index} exists but is empty"
+            )
+
+        # Step 3: Check for duplicate messageId
+        history = spec_data.get("history", [])
+        for entry in history:
+            if entry.get("message_id") == message_id:
+                result["action"] = "duplicate"
+                result["success"] = True
+                result["message"] = f"Duplicate message {message_id} skipped"
+                logger.info(
+                    f"Duplicate Pub/Sub message {message_id} detected for "
+                    f"plan {plan_id} spec {spec_index}, skipping",
+                    extra={
+                        "plan_id": plan_id,
+                        "spec_index": spec_index,
+                        "message_id": message_id,
+                    },
+                )
+                return
+
+        # Step 4: Validate ordering for terminal statuses
+        current_spec_status = spec_data.get("status")
+        is_terminal_status = status in ["finished", "failed"]
+        is_already_terminal = current_spec_status in ["finished", "failed"]
+
+        # Detect duplicate terminal status on same spec
+        if is_terminal_status and is_already_terminal:
+            result["action"] = "out_of_order"
+            result["message"] = (
+                f"Spec {spec_index} already in terminal state {current_spec_status}, "
+                f"ignoring {status} status"
+            )
+            logger.warning(
+                f"Out-of-order terminal status for plan {plan_id} spec {spec_index}: "
+                f"already {current_spec_status}, received {status}",
+                extra={
+                    "plan_id": plan_id,
+                    "spec_index": spec_index,
+                    "current_status": current_spec_status,
+                    "received_status": status,
+                    "message_id": message_id,
+                },
+            )
+            return
+
+        # Detect later spec finishing before earlier spec (only for "finished" status)
+        if status == "finished":
+            current_spec_index = plan_data.get("current_spec_index")
+            if current_spec_index is not None and spec_index > current_spec_index:
+                result["action"] = "out_of_order"
+                result["message"] = (
+                    f"Spec {spec_index} finishing before spec {current_spec_index}, aborting"
+                )
+                logger.error(
+                    f"Out-of-order spec completion detected: spec {spec_index} finishing "
+                    f"before current spec {current_spec_index} in plan {plan_id}",
+                    extra={
+                        "plan_id": plan_id,
+                        "spec_index": spec_index,
+                        "current_spec_index": current_spec_index,
+                        "status": status,
+                        "message_id": message_id,
+                    },
+                )
+                return
+
+        # Step 5: Create history entry
+        history_entry = {
+            "timestamp": now.isoformat(),
+            "received_status": status,
+            "stage": stage,
+            "raw_snippet": raw_payload_snippet,
+            "message_id": message_id,
+        }
+        history.append(history_entry)
+
+        # Step 6: Determine updates based on status type
+        spec_updates = {
+            "updated_at": now,
+            "history": history,
+        }
+
+        plan_updates = {
+            "updated_at": now,
+            "last_event_at": now,
+        }
+
+        if status == "finished":
+            # Mark spec as finished
+            spec_updates["status"] = "finished"
+
+            # Update plan counters
+            completed_specs = plan_data.get("completed_specs", 0) + 1
+            total_specs = plan_data.get("total_specs", 0)
+            plan_updates["completed_specs"] = completed_specs
+
+            # Check if this is the last spec
+            if completed_specs >= total_specs:
+                # Plan is finished
+                plan_updates["overall_status"] = "finished"
+                plan_updates["current_spec_index"] = None
+                result["plan_finished"] = True
+                result["message"] = f"Plan {plan_id} marked as finished"
+                logger.info(
+                    f"Plan {plan_id} completed: all {total_specs} specs finished",
+                    extra={
+                        "plan_id": plan_id,
+                        "total_specs": total_specs,
+                        "completed_specs": completed_specs,
+                    },
+                )
+            else:
+                # Advance to next spec
+                next_spec_index = spec_index + 1
+                plan_updates["current_spec_index"] = next_spec_index
+
+                # Unblock next spec (blocked -> running)
+                next_spec_ref = plan_ref.collection("specs").document(str(next_spec_index))
+                next_spec_snapshot = next_spec_ref.get(transaction=transaction)
+
+                if next_spec_snapshot.exists:
+                    next_spec_data = next_spec_snapshot.to_dict()
+                    if next_spec_data and next_spec_data.get("status") == "blocked":
+                        next_spec_updates = {
+                            "status": "running",
+                            "updated_at": now,
+                        }
+                        transaction.update(next_spec_ref, next_spec_updates)
+                        result["next_spec_triggered"] = True
+                        result["message"] = (
+                            f"Spec {spec_index} finished, spec {next_spec_index} unblocked"
+                        )
+                        logger.info(
+                            f"Spec {next_spec_index} unblocked in plan {plan_id}",
+                            extra={
+                                "plan_id": plan_id,
+                                "spec_index": next_spec_index,
+                                "previous_spec": spec_index,
+                            },
+                        )
+                    else:
+                        result["message"] = f"Spec {spec_index} finished"
+                        current_status = (
+                            next_spec_data.get("status") if next_spec_data else "unknown"
+                        )
+                        logger.info(
+                            f"Next spec {next_spec_index} in plan {plan_id} is not blocked, "
+                            f"skipping unblock (current status: {current_status})",
+                            extra={
+                                "plan_id": plan_id,
+                                "spec_index": next_spec_index,
+                                "status": next_spec_data.get("status") if next_spec_data else None,
+                            },
+                        )
+                else:
+                    result["message"] = f"Spec {spec_index} finished"
+                    logger.warning(
+                        f"Next spec {next_spec_index} not found in plan {plan_id}",
+                        extra={"plan_id": plan_id, "spec_index": next_spec_index},
+                    )
+
+        elif status == "failed":
+            # Mark spec as failed
+            spec_updates["status"] = "failed"
+
+            # Mark plan as failed
+            plan_updates["overall_status"] = "failed"
+            result["message"] = f"Spec {spec_index} and plan {plan_id} marked as failed"
+            logger.info(
+                f"Spec {spec_index} failed in plan {plan_id}, plan marked as failed",
+                extra={"plan_id": plan_id, "spec_index": spec_index, "status": status},
+            )
+
+        else:
+            # Intermediate status - update stage field but keep main status unchanged
+            if stage:
+                spec_updates["current_stage"] = stage
+            result["message"] = f"Spec {spec_index} stage updated: {stage if stage else 'none'}"
+            logger.info(
+                f"Intermediate status update for spec {spec_index} in plan {plan_id}",
+                extra={
+                    "plan_id": plan_id,
+                    "spec_index": spec_index,
+                    "status": status,
+                    "stage": stage,
+                },
+            )
+
+        # Step 7: Write updates
+        transaction.update(spec_ref, spec_updates)
+        transaction.update(plan_ref, plan_updates)
+
+        result["success"] = True
+        result["action"] = "updated"
+
+    # Execute the transaction
+    try:
+        transaction = client.transaction()
+        update_in_transaction(transaction)
+        return result
+
+    except FirestoreOperationError:
+        # Re-raise our custom errors
+        raise
+    except gcp_exceptions.GoogleAPICallError as e:
+        error_msg = (
+            f"Firestore API error processing status update for plan {plan_id} "
+            f"spec {spec_index}: {str(e)}"
+        )
+        logger.error(error_msg)
+        raise FirestoreOperationError(error_msg) from e
