@@ -62,6 +62,9 @@ from app.models.plan import PlanIn, create_initial_plan_record, create_initial_s
 
 logger = logging.getLogger(__name__)
 
+# Constants for execution metadata initialization
+INITIAL_EXECUTION_ATTEMPT_COUNT = 1
+
 
 class FirestoreConfigurationError(Exception):
     """Raised when Firestore configuration is invalid or missing."""
@@ -380,9 +383,10 @@ def create_plan_with_specs(
 
     EXECUTION TRIGGER INTEGRATION:
     When trigger_first_spec is True (default), the first spec (index 0) is created
-    with status="running" and execution metadata (execution_attempts=1,
-    last_execution_at=now). This prepares spec 0 for immediate execution triggering
-    by the caller. All other specs remain "blocked" with zero attempts.
+    with status="running" and execution metadata (execution_attempts=
+    INITIAL_EXECUTION_ATTEMPT_COUNT, last_execution_at=now). This prepares spec 0
+    for immediate execution triggering by the caller. All other specs remain
+    "blocked" with zero attempts.
 
     TRANSACTIONAL ORDERING STRATEGY:
     Uses Firestore transactions to ensure atomicity - all writes succeed or fail
@@ -499,7 +503,7 @@ def create_plan_with_specs(
             # For spec 0 when trigger_first_spec is True, set execution metadata
             # to indicate it's ready for immediate execution trigger
             if idx == 0 and trigger_first_spec:
-                spec_record.execution_attempts = 1
+                spec_record.execution_attempts = INITIAL_EXECUTION_ATTEMPT_COUNT
                 spec_record.last_execution_at = now
 
             # Use string index as document ID
