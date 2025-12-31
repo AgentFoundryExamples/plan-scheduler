@@ -11,17 +11,54 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Firestore service integration with credential-aware initialization."""
+"""Firestore service integration with credential-aware initialization.
 
+This module provides:
+1. Firestore client initialization and connectivity testing
+2. Plan persistence with idempotent ingestion and conflict detection
+3. Atomic batch writes for plan metadata and spec subcollections
+
+Key Functions:
+- get_client(): Get singleton Firestore client instance
+- smoke_test(): Test Firestore connectivity
+- create_plan_with_specs(): Create plan with specs (idempotent, atomic)
+
+Exception Classes:
+- FirestoreConfigurationError: Invalid or missing configuration
+- FirestoreConnectionError: Connectivity test failures
+- FirestoreOperationError: Firestore operation failures
+- PlanConflictError: Plan exists with different body (includes digests)
+
+Outcomes:
+- PlanIngestionOutcome.CREATED: New plan created
+- PlanIngestionOutcome.IDENTICAL: Idempotent success (same payload)
+- PlanIngestionOutcome.CONFLICT: Raises PlanConflictError
+
+Plan Structure:
+- plans/{plan_id}: Metadata document
+  - overall_status, total_specs, completed_specs, current_spec_index
+  - last_event_at, raw_request, timestamps
+- plans/{plan_id}/specs/{index}: Spec subcollection
+  - status: "running" (index 0), "blocked" (others)
+  - purpose, vision, must, dont, nice, assumptions
+  - timestamps, history
+"""
+
+import hashlib
+import json
 import logging
 import uuid
+from datetime import UTC, datetime
+from enum import Enum
 from functools import lru_cache
+from typing import Any
 
 from google.api_core import exceptions as gcp_exceptions
 from google.auth import exceptions as auth_exceptions
 from google.cloud import firestore
 
 from app.config import get_settings
+from app.models.plan import PlanIn, create_initial_plan_record, create_initial_spec_record
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +73,29 @@ class FirestoreConnectionError(Exception):
     """Raised when Firestore connectivity test fails."""
 
     pass
+
+
+class FirestoreOperationError(Exception):
+    """Raised when Firestore operation fails."""
+
+    pass
+
+
+class PlanConflictError(Exception):
+    """Raised when plan already exists with different body."""
+
+    def __init__(self, message: str, stored_digest: str, incoming_digest: str):
+        super().__init__(message)
+        self.stored_digest = stored_digest
+        self.incoming_digest = incoming_digest
+
+
+class PlanIngestionOutcome(str, Enum):
+    """Outcome of plan ingestion operation."""
+
+    CREATED = "created"
+    IDENTICAL = "identical"
+    CONFLICT = "conflict"
 
 
 @lru_cache(maxsize=1)
@@ -158,3 +218,243 @@ def smoke_test(client: firestore.Client | None = None) -> None:
                     f"Smoke test: failed to clean up test document "
                     f"{test_collection}/{test_doc_id}: {str(cleanup_error)}"
                 )
+
+
+def _compute_request_digest(raw_request: dict[str, Any]) -> str:
+    """
+    Compute a stable digest of a request payload for comparison.
+
+    Args:
+        raw_request: The request payload as a dictionary
+
+    Returns:
+        SHA-256 hex digest of the canonicalized JSON
+    """
+    # Sort keys for stable serialization
+    canonical_json = json.dumps(raw_request, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+
+def _check_plan_exists(
+    client: firestore.Client, plan_id: str, incoming_plan: PlanIn
+) -> tuple[bool, PlanIngestionOutcome | None, str | None]:
+    """
+    Check if a plan document exists and compare with incoming plan.
+
+    Args:
+        client: Firestore client instance
+        plan_id: Plan ID to check
+        incoming_plan: Incoming PlanIn payload
+
+    Returns:
+        Tuple of (exists, outcome, stored_digest)
+        - exists: True if plan document exists
+        - outcome: IDENTICAL if requests match, CONFLICT if different, None if doesn't exist
+        - stored_digest: Digest of stored raw_request, None if doesn't exist
+
+    Raises:
+        FirestoreOperationError: If Firestore operation fails
+    """
+    try:
+        doc_ref = client.collection("plans").document(plan_id)
+        doc_snapshot = doc_ref.get()
+
+        if not doc_snapshot.exists:
+            return False, None, None
+
+        doc_data = doc_snapshot.to_dict()
+        if not doc_data:
+            # An existing document should never be empty. This indicates an anomaly.
+            raise FirestoreOperationError(f"Plan document {plan_id} exists but is empty.")
+
+        # Get stored raw_request, fall back to comparing serialized specs if missing
+        stored_raw_request = doc_data.get("raw_request")
+        if not stored_raw_request:
+            # Fall back to reconstructing from stored specs for old documents
+            logger.warning(
+                f"Plan {plan_id} missing raw_request field, "
+                "falling back to spec count comparison"
+            )
+            stored_total_specs = doc_data.get("total_specs", 0)
+            incoming_total_specs = len(incoming_plan.specs)
+            if stored_total_specs != incoming_total_specs:
+                # Different spec counts indicate conflict
+                stored_digest = f"spec_count_{stored_total_specs}"
+                incoming_digest = f"spec_count_{incoming_total_specs}"
+                raise PlanConflictError(
+                    f"Plan {plan_id} exists with different spec count",
+                    stored_digest=stored_digest,
+                    incoming_digest=incoming_digest,
+                )
+            # Same spec count, assume identical for idempotency
+            return True, PlanIngestionOutcome.IDENTICAL, None
+
+        # Compare digests of raw requests
+        incoming_raw_request = incoming_plan.model_dump()
+        stored_digest = _compute_request_digest(stored_raw_request)
+        incoming_digest = _compute_request_digest(incoming_raw_request)
+
+        if stored_digest == incoming_digest:
+            return True, PlanIngestionOutcome.IDENTICAL, stored_digest
+
+        # Requests differ - conflict
+        raise PlanConflictError(
+            f"Plan {plan_id} already exists with different body",
+            stored_digest=stored_digest,
+            incoming_digest=incoming_digest,
+        )
+
+    except PlanConflictError:
+        # Re-raise conflict errors
+        raise
+    except FirestoreOperationError:
+        # Re-raise operation errors (including empty document error)
+        raise
+    except gcp_exceptions.GoogleAPICallError as e:
+        error_msg = f"Firestore API error checking plan {plan_id}: {str(e)}"
+        logger.error(error_msg)
+        raise FirestoreOperationError(error_msg) from e
+
+
+def create_plan_with_specs(
+    plan_in: PlanIn, client: firestore.Client | None = None
+) -> tuple[PlanIngestionOutcome, str]:
+    """
+    Create a plan document with specs subcollection in Firestore.
+
+    This function implements idempotent plan ingestion:
+    - If plan doesn't exist, creates it with specs
+    - If plan exists with identical payload, returns idempotent success
+    - If plan exists with different payload, raises conflict error
+
+    The first spec (index 0) starts as "running", all others as "blocked".
+    Plan metadata includes: overall_status="running", total_specs, completed_specs=0,
+    current_spec_index=0, last_event_at, raw_request, and timestamps.
+
+    Uses transactions to ensure atomicity and prevent race conditions -
+    all writes succeed or fail together, and existence checks are atomic.
+
+    Args:
+        plan_in: PlanIn request payload
+        client: Optional Firestore client (uses get_client() if not provided)
+
+    Returns:
+        Tuple of (outcome, plan_id)
+        - outcome: PlanIngestionOutcome.CREATED or IDENTICAL
+        - plan_id: The plan ID
+
+    Raises:
+        PlanConflictError: When plan exists with different body
+        FirestoreOperationError: When Firestore operation fails
+    """
+    if client is None:
+        client = get_client()
+
+    plan_id = plan_in.id
+
+    @firestore.transactional
+    def create_in_transaction(transaction):
+        """Transactional function to check and create plan atomically."""
+        doc_ref = client.collection("plans").document(plan_id)
+        doc_snapshot = doc_ref.get(transaction=transaction)
+
+        # Check if plan exists within transaction
+        if doc_snapshot.exists:
+            doc_data = doc_snapshot.to_dict()
+            if not doc_data:
+                # An existing document should never be empty. This indicates an anomaly.
+                raise FirestoreOperationError(f"Plan document {plan_id} exists but is empty.")
+
+            # Get stored raw_request, fall back to comparing serialized specs if missing
+            stored_raw_request = doc_data.get("raw_request")
+            if not stored_raw_request:
+                # Fall back to reconstructing from stored specs for old documents
+                logger.warning(
+                    f"Plan {plan_id} missing raw_request field, "
+                    "falling back to spec count comparison"
+                )
+                stored_total_specs = doc_data.get("total_specs", 0)
+                incoming_total_specs = len(plan_in.specs)
+                if stored_total_specs != incoming_total_specs:
+                    # Different spec counts indicate conflict
+                    stored_digest = f"spec_count_{stored_total_specs}"
+                    incoming_digest = f"spec_count_{incoming_total_specs}"
+                    raise PlanConflictError(
+                        f"Plan {plan_id} exists with different spec count",
+                        stored_digest=stored_digest,
+                        incoming_digest=incoming_digest,
+                    )
+                # Same spec count, assume identical for idempotency
+                logger.info(
+                    f"Plan {plan_id} already exists with identical spec count, "
+                    "skipping duplicate ingestion (legacy document without raw_request)"
+                )
+                return PlanIngestionOutcome.IDENTICAL
+
+            # Compare digests of raw requests
+            incoming_raw_request = plan_in.model_dump()
+            stored_digest = _compute_request_digest(stored_raw_request)
+            incoming_digest = _compute_request_digest(incoming_raw_request)
+
+            if stored_digest == incoming_digest:
+                logger.info(
+                    f"Plan {plan_id} already exists with identical payload, "
+                    "skipping duplicate ingestion"
+                )
+                return PlanIngestionOutcome.IDENTICAL
+
+            # Requests differ - conflict
+            raise PlanConflictError(
+                f"Plan {plan_id} already exists with different body",
+                stored_digest=stored_digest,
+                incoming_digest=incoming_digest,
+            )
+
+        # Plan doesn't exist - create it
+        now = datetime.now(UTC)
+
+        # Create plan record
+        plan_record = create_initial_plan_record(plan_in, overall_status="running", now=now)
+
+        # Set current_spec_index to 0 since first spec will be running
+        plan_record.current_spec_index = 0
+
+        # Convert plan record to dict for Firestore
+        plan_data = plan_record.model_dump(mode="json")
+        transaction.create(doc_ref, plan_data)
+
+        # Create spec documents in subcollection
+        for idx, spec_in in enumerate(plan_in.specs):
+            # First spec is running, rest are blocked
+            status = "running" if idx == 0 else "blocked"
+            spec_record = create_initial_spec_record(
+                spec_in, spec_index=idx, status=status, now=now
+            )
+
+            # Use string index as document ID
+            spec_doc_ref = doc_ref.collection("specs").document(str(idx))
+            spec_data = spec_record.model_dump(mode="json")
+            transaction.create(spec_doc_ref, spec_data)
+
+        return PlanIngestionOutcome.CREATED
+
+    # Execute the transaction
+    try:
+        transaction = client.transaction()
+        outcome = create_in_transaction(transaction)
+
+        if outcome == PlanIngestionOutcome.CREATED:
+            logger.info(
+                f"Created plan {plan_id} with {len(plan_in.specs)} specs "
+                f"(first spec running, others blocked)"
+            )
+
+        return outcome, plan_id
+
+    except (PlanConflictError, FirestoreOperationError):
+        # Re-raise our custom errors
+        raise
+    except gcp_exceptions.GoogleAPICallError as e:
+        error_msg = f"Firestore API error creating plan {plan_id}: {str(e)}"
+        logger.error(error_msg)
+        raise FirestoreOperationError(error_msg) from e
