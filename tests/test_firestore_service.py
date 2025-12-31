@@ -838,6 +838,61 @@ def test_create_plan_with_specs_no_execution_metadata_when_flag_false(
     assert spec0_data["last_execution_at"] is None
 
 
+def test_create_plan_with_multiple_specs_verifies_blocked_status(mock_firestore_client):
+    """Test that plans with 3+ specs have only spec 0 running, others blocked with zero attempts."""
+    from uuid import uuid4
+
+    from app.models.plan import PlanIn, SpecIn
+    from app.services.firestore_service import create_plan_with_specs
+
+    # Create a plan with 3 specs to thoroughly test blocked status
+    plan_id = str(uuid4())
+    plan_in = PlanIn(
+        id=plan_id,
+        specs=[
+            SpecIn(purpose=f"Purpose {i}", vision=f"Vision {i}", must=[f"req{i}"]) for i in range(3)
+        ],
+    )
+
+    # Mock plan doesn't exist
+    mock_doc_ref = MagicMock()
+    mock_doc_snapshot = MagicMock()
+    mock_doc_snapshot.exists = False
+    mock_doc_ref.get.return_value = mock_doc_snapshot
+
+    mock_transaction = MagicMock()
+    mock_firestore_client.transaction.return_value = mock_transaction
+    mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+
+    # Create plan with trigger_first_spec=True
+    create_plan_with_specs(plan_in, mock_firestore_client, trigger_first_spec=True)
+
+    # Check the spec status in transaction.create calls
+    create_calls = mock_transaction.create.call_args_list
+    assert len(create_calls) == 4  # 1 plan + 3 specs
+
+    # Verify spec 0 has execution metadata set
+    spec0_data = create_calls[1][0][1]
+    assert spec0_data["status"] == "running"
+    assert spec0_data["spec_index"] == 0
+    assert spec0_data["execution_attempts"] == 1
+    assert spec0_data["last_execution_at"] is not None
+
+    # Verify spec 1 is blocked with zero attempts
+    spec1_data = create_calls[2][0][1]
+    assert spec1_data["status"] == "blocked"
+    assert spec1_data["spec_index"] == 1
+    assert spec1_data["execution_attempts"] == 0
+    assert spec1_data["last_execution_at"] is None
+
+    # Verify spec 2 is blocked with zero attempts
+    spec2_data = create_calls[3][0][1]
+    assert spec2_data["status"] == "blocked"
+    assert spec2_data["spec_index"] == 2
+    assert spec2_data["execution_attempts"] == 0
+    assert spec2_data["last_execution_at"] is None
+
+
 def test_delete_plan_with_specs_deletes_plan_and_all_specs(mock_firestore_client, sample_plan_in):
     """Test that delete_plan_with_specs deletes plan and all spec documents."""
     from app.services.firestore_service import delete_plan_with_specs

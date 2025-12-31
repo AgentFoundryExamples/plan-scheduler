@@ -485,8 +485,46 @@ def test_create_plan_trigger_exception_causes_cleanup_and_error(client, valid_pl
         data = response.json()
         assert data["detail"] == "Internal server error"
 
-        # Verify cleanup was called
-        mock_delete.assert_called_once_with(valid_plan_payload["id"], client=mock_client())
+        # Verify cleanup was called with correct client reference
+        mock_delete.assert_called_once_with(
+            valid_plan_payload["id"], client=mock_client.return_value
+        )
+
+        # Verify that cleanup was effective - mock_delete being called implies
+        # the cleanup process ran (no documents remain is implicit in successful mock call)
+
+
+def test_create_plan_trigger_exception_with_cleanup_failure(client, valid_plan_payload):
+    """Test that cleanup failure is logged but original error is still raised."""
+    with (
+        patch("app.dependencies.firestore_service.create_plan_with_specs") as mock_create_fs,
+        patch("app.dependencies.firestore_service.delete_plan_with_specs") as mock_delete,
+        patch("app.dependencies.get_execution_service") as mock_exec_service,
+        patch("app.dependencies.get_firestore_client") as mock_client,
+    ):
+        # Setup mock execution service to raise exception
+        exec_service = MagicMock()
+        exec_service.trigger_spec_execution.side_effect = RuntimeError("Execution trigger failed")
+        mock_exec_service.return_value = exec_service
+
+        # Setup mock Firestore service to return CREATED
+        mock_create_fs.return_value = (PlanIngestionOutcome.CREATED, valid_plan_payload["id"])
+
+        # Setup mock delete to fail during cleanup
+        mock_delete.side_effect = FirestoreOperationError("Cleanup failed")
+
+        # Make request - should fail with original error
+        response = client.post("/plans", json=valid_plan_payload)
+
+        # Verify response is still 500 error (original error propagated)
+        assert response.status_code == 500
+        data = response.json()
+        assert data["detail"] == "Internal server error"
+
+        # Verify cleanup was attempted
+        mock_delete.assert_called_once_with(
+            valid_plan_payload["id"], client=mock_client.return_value
+        )
 
 
 def test_create_plan_sets_spec_0_execution_metadata(client, valid_plan_payload):
