@@ -83,8 +83,8 @@ Total files: 20
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for plan  
-**Size:** 9.39 KB  
-**LOC:** 210  
+**Size:** 10.30 KB  
+**LOC:** 234  
 **TODOs/FIXMEs:** 0  
 
 ## app/services/__init__.py
@@ -173,8 +173,8 @@ Total files: 20
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 26.07 KB  
-**LOC:** 597  
+**Size:** 31.48 KB  
+**LOC:** 731  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_plans_api.py

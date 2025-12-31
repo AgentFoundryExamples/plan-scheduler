@@ -123,8 +123,8 @@
       "summary": "Python module for plan",
       "summary_text": "Python module for plan",
       "metrics": {
-        "size_bytes": 9616,
-        "loc": 210,
+        "size_bytes": 10547,
+        "loc": 234,
         "todo_count": 0
       }
     },
@@ -263,8 +263,8 @@
       "summary": "Python test file (role: test)",
       "summary_text": "Python test file (role: test)",
       "metrics": {
-        "size_bytes": 26694,
-        "loc": 597,
+        "size_bytes": 32240,
+        "loc": 731,
         "todo_count": 0
       }
     },
