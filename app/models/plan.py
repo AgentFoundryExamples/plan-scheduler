@@ -160,16 +160,14 @@ class SpecRecord(BaseModel):
         description="History of state transitions (can be empty initially)",
     )
 
-    @field_validator("created_at", "updated_at", "last_execution_at", mode="before")
+    @field_validator("created_at", "updated_at", "last_execution_at", mode="after")
     @classmethod
-    def ensure_timezone_aware(cls, v: Any) -> datetime | None:
+    def ensure_timezone_aware(cls, v: datetime | None) -> datetime | None:
         """Ensure timestamps are timezone-aware (UTC)."""
         if v is None:
             return None
-        if isinstance(v, datetime):
-            if v.tzinfo is None:
-                return v.replace(tzinfo=UTC)
-            return v
+        if v.tzinfo is None:
+            return v.replace(tzinfo=UTC)
         return v
 
 
