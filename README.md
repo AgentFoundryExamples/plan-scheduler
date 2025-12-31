@@ -495,10 +495,11 @@ The request body must be a JSON object conforming to the following schema:
 
 - **201 Created**: Plan was successfully created
 - **200 OK**: Idempotent ingestion - plan already exists with identical payload
-- **400 Bad Request**: Validation error (invalid UUID, missing required fields, etc.)
 - **409 Conflict**: Plan exists with different payload
-- **422 Unprocessable Entity**: Malformed request or validation error
+- **422 Unprocessable Entity**: Request validation failed (invalid UUID format, empty specs array, missing required fields like purpose/vision, or malformed JSON)
 - **500 Internal Server Error**: Server-side error (Firestore unavailable, etc.)
+
+**Note**: FastAPI automatically returns 422 for Pydantic validation errors. Custom business logic errors (like conflicts) use appropriate HTTP status codes (409, etc.).
 
 #### Success Response (201 Created)
 
@@ -522,10 +523,16 @@ When the exact same request is sent again (same plan ID and identical payload):
 
 #### Error Responses
 
-**Validation Error (400/422):**
+**Validation Error (422):**
 ```json
 {
-  "detail": "Invalid UUID string: not-a-uuid"
+  "detail": [
+    {
+      "type": "value_error",
+      "loc": ["body", "id"],
+      "msg": "Invalid UUID string: not-a-uuid"
+    }
+  ]
 }
 ```
 
@@ -551,7 +558,7 @@ The POST /plans endpoint implements content-based idempotency to ensure safe ret
 
 2. **Different Payload**: If a plan with the same ID already exists but the request payload differs from the stored payload, the endpoint returns 409 Conflict. This prevents accidental overwrites and signals to the client that they may be attempting to create a plan with a conflicting ID.
 
-3. **Idempotent Detection**: The service computes a SHA-256 digest of the canonicalized request payload (with sorted keys) and compares it with the stored digest. This ensures that requests with different field ordering but identical content are recognized as identical.
+3. **Idempotent Detection**: The service computes a SHA-256 digest of the canonicalized request payload and compares it with the stored digest. **Canonicalization** means converting the JSON to a standard form by sorting all object keys alphabetically before hashing. This ensures that requests with different field ordering but identical content are recognized as identical. For example, `{"id": "123", "specs": [...]}` and `{"specs": [...], "id": "123"}` produce the same digest and are treated as identical.
 
 **Example Scenarios:**
 
