@@ -136,3 +136,24 @@ def test_settings_ignores_extra_env_vars():
         settings = Settings()
         assert settings.PORT == 8080
         assert not hasattr(settings, "EXTRA_VAR")
+
+
+def test_execution_enabled_defaults_to_true():
+    """Test that EXECUTION_ENABLED defaults to True."""
+    with patch.dict(os.environ, {}, clear=True):
+        settings = Settings()
+        assert settings.EXECUTION_ENABLED is True
+
+
+def test_execution_enabled_can_be_disabled():
+    """Test that EXECUTION_ENABLED can be set to False."""
+    with patch.dict(os.environ, {"EXECUTION_ENABLED": "false"}, clear=True):
+        settings = Settings()
+        assert settings.EXECUTION_ENABLED is False
+
+
+def test_execution_enabled_can_be_enabled():
+    """Test that EXECUTION_ENABLED can be set to True."""
+    with patch.dict(os.environ, {"EXECUTION_ENABLED": "true"}, clear=True):
+        settings = Settings()
+        assert settings.EXECUTION_ENABLED is True
