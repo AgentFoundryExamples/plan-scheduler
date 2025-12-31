@@ -454,6 +454,194 @@ Response:
 }
 ```
 
+### Plan Ingestion
+
+**POST /plans**
+
+Creates a new plan with specifications and persists it to Firestore. This endpoint implements idempotent ingestion behavior to ensure duplicate requests are handled gracefully.
+
+#### Request Body
+
+The request body must be a JSON object conforming to the following schema:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "specs": [
+    {
+      "purpose": "Purpose of the specification",
+      "vision": "Vision for what should be achieved",
+      "must": ["Required feature 1", "Required feature 2"],
+      "dont": ["Thing to avoid 1", "Thing to avoid 2"],
+      "nice": ["Nice-to-have feature 1"],
+      "assumptions": ["Assumption 1", "Assumption 2"]
+    }
+  ]
+}
+```
+
+**Field Descriptions:**
+
+- `id` (string, required): Plan identifier as a valid UUID string
+- `specs` (array, required): Array of specification objects (at least one required)
+  - `purpose` (string, required): Purpose of the specification
+  - `vision` (string, required): Vision for what should be achieved
+  - `must` (array of strings, optional): Required features/constraints (defaults to empty array)
+  - `dont` (array of strings, optional): Things to avoid (defaults to empty array)
+  - `nice` (array of strings, optional): Nice-to-have features (defaults to empty array)
+  - `assumptions` (array of strings, optional): Assumptions made (defaults to empty array)
+
+#### Response Codes
+
+- **201 Created**: Plan was successfully created
+- **200 OK**: Idempotent ingestion - plan already exists with identical payload
+- **400 Bad Request**: Validation error (invalid UUID, missing required fields, etc.)
+- **409 Conflict**: Plan exists with different payload
+- **422 Unprocessable Entity**: Malformed request or validation error
+- **500 Internal Server Error**: Server-side error (Firestore unavailable, etc.)
+
+#### Success Response (201 Created)
+
+```json
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "running"
+}
+```
+
+#### Idempotent Response (200 OK)
+
+When the exact same request is sent again (same plan ID and identical payload):
+
+```json
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "running"
+}
+```
+
+#### Error Responses
+
+**Validation Error (400/422):**
+```json
+{
+  "detail": "Invalid UUID string: not-a-uuid"
+}
+```
+
+**Conflict Error (409):**
+```json
+{
+  "detail": "Plan 550e8400-e29b-41d4-a716-446655440000 already exists with different body"
+}
+```
+
+**Server Error (500):**
+```json
+{
+  "detail": "Internal server error"
+}
+```
+
+#### Idempotency Semantics
+
+The POST /plans endpoint implements content-based idempotency to ensure safe retries:
+
+1. **Identical Payload**: If a plan with the same ID already exists and the request payload is identical to the stored payload, the endpoint returns 200 OK with the existing plan information. This allows clients to safely retry requests without creating duplicates.
+
+2. **Different Payload**: If a plan with the same ID already exists but the request payload differs from the stored payload, the endpoint returns 409 Conflict. This prevents accidental overwrites and signals to the client that they may be attempting to create a plan with a conflicting ID.
+
+3. **Idempotent Detection**: The service computes a SHA-256 digest of the canonicalized request payload (with sorted keys) and compares it with the stored digest. This ensures that requests with different field ordering but identical content are recognized as identical.
+
+**Example Scenarios:**
+
+- **Safe Retry**: Client sends the same plan twice due to network timeout → First request returns 201, second returns 200
+- **Accidental Reuse**: Client tries to create a new plan with an existing ID but different specs → Returns 409 Conflict
+- **Multiple Clients**: Two clients try to create the same plan with identical payloads → First succeeds with 201, second gets 200
+
+#### Firestore Data Layout
+
+Plans are stored in Firestore with the following structure:
+
+```
+plans/{plan_id}                          # Plan metadata document
+├── overall_status: "running" | "finished" | "failed"
+├── total_specs: 3
+├── completed_specs: 0
+├── current_spec_index: 0
+├── created_at: "2025-01-01T12:00:00Z"
+├── updated_at: "2025-01-01T12:00:00Z"
+├── last_event_at: "2025-01-01T12:00:00Z"
+└── raw_request: { ... }                 # Original request for idempotency
+
+plans/{plan_id}/specs/{index}            # Spec subcollection documents
+├── spec_index: 0
+├── purpose: "..."
+├── vision: "..."
+├── must: [...]
+├── dont: [...]
+├── nice: [...]
+├── assumptions: [...]
+├── status: "running" | "blocked" | "finished" | "failed"
+├── created_at: "2025-01-01T12:00:00Z"
+├── updated_at: "2025-01-01T12:00:00Z"
+└── history: []
+```
+
+**Status Rules:**
+
+- First spec (index 0) is created with status `"running"`
+- All subsequent specs are created with status `"blocked"`
+- Plan `overall_status` is set to `"running"` on creation
+- Plan `current_spec_index` is set to `0` (pointing to the first spec)
+- Plan `completed_specs` is initialized to `0`
+
+#### Example Usage
+
+**Using curl:**
+
+```bash
+curl -X POST http://localhost:8080/plans \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "specs": [
+      {
+        "purpose": "Create user authentication system",
+        "vision": "Secure login with JWT tokens",
+        "must": ["Password hashing", "Token expiration"],
+        "dont": ["Store passwords in plain text"],
+        "nice": ["Remember me functionality"],
+        "assumptions": ["Users have valid email addresses"]
+      }
+    ]
+  }'
+```
+
+**Using Python with httpx:**
+
+```python
+import httpx
+
+plan_data = {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "specs": [
+        {
+            "purpose": "Create user authentication system",
+            "vision": "Secure login with JWT tokens",
+            "must": ["Password hashing", "Token expiration"],
+            "dont": ["Store passwords in plain text"],
+            "nice": ["Remember me functionality"],
+            "assumptions": ["Users have valid email addresses"]
+        }
+    ]
+}
+
+response = httpx.post("http://localhost:8080/plans", json=plan_data)
+print(f"Status: {response.status_code}")
+print(f"Response: {response.json()}")
+```
+
 ## Error Handling
 
 - **Invalid PORT**: Non-integer or out-of-range PORT values (not 1-65535) will raise a clear validation error
