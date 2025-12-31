@@ -142,7 +142,7 @@ async def create_plan(plan_in: PlanIn, response: Response) -> PlanCreateResponse
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_msg) from e
 
     except FirestoreOperationError as e:
-        # Firestore operation failed
+        # Firestore operation failed (including spec fetch or cleanup failures)
         error_msg = "Internal server error"
         logger.error(
             "Plan ingestion failed due to Firestore error",
@@ -157,7 +157,7 @@ async def create_plan(plan_in: PlanIn, response: Response) -> PlanCreateResponse
         ) from e
 
     except Exception as e:
-        # Unexpected error
+        # Unexpected error (including execution trigger failures after cleanup)
         error_msg = "Internal server error"
         logger.error(
             "Plan ingestion failed due to unexpected error",
