@@ -1024,7 +1024,12 @@ class TestOIDCAuthentication:
     @patch("app.api.pubsub.process_spec_status_update")
     @patch("app.api.pubsub.get_client")
     def test_oidc_disabled_with_valid_shared_token_succeeds(
-        self, mock_get_client, mock_process, mock_get_settings, client, valid_pubsub_envelope
+        self,
+        mock_get_client,
+        mock_process,
+        mock_get_settings,
+        client,
+        valid_pubsub_envelope,
     ):
         """Test that when OIDC is disabled, valid shared token works."""
         mock_settings = MagicMock()
