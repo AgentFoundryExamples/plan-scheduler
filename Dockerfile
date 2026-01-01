@@ -1,11 +1,20 @@
 # --- Build stage ---
 # This stage installs poetry and exports the dependencies to requirements.txt
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
+# Install ca-certificates to handle SSL verification
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install poetry with pinned version for reproducible builds
-RUN pip install --no-cache-dir poetry==1.8.2
+# Using --trusted-host flags to handle environments with SSL inspection
+RUN pip install --no-cache-dir \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org \
+    poetry==1.8.2
 
 # Copy dependency files
 COPY pyproject.toml poetry.lock ./
@@ -32,7 +41,11 @@ RUN groupadd -r -g 1000 appuser && \
 COPY --from=builder /app/requirements.txt ./
 
 # Install dependencies from requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Using --trusted-host flags to handle environments with SSL inspection
+RUN pip install --no-cache-dir \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org \
+    -r requirements.txt
 
 # Copy application code
 COPY app ./app
@@ -60,6 +73,6 @@ USER appuser
 # --host 0.0.0.0: Binds to all interfaces (required for Cloud Run)
 # --port ${PORT}: Uses PORT environment variable (Cloud Run injects this)
 # --workers ${WORKERS}: Configurable worker count (default 1 for Cloud Run)
-# --log-level: Uses LOG_LEVEL environment variable for control
+# --log-level: Uses LOG_LEVEL environment variable (converted to lowercase for uvicorn)
 # Note: Cloud Run health checks use the /health endpoint directly, no Docker HEALTHCHECK needed
-CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers ${WORKERS} --log-level ${LOG_LEVEL}"
+CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers ${WORKERS} --log-level $(echo ${LOG_LEVEL} | tr '[:upper:]' '[:lower:]')"

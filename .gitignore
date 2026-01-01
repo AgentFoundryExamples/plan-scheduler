@@ -29,6 +29,9 @@ env/
 # Poetry
 .poetry/
 
+# Build artifacts
+requirements.txt  # Generated during Docker build from poetry.lock
+
 # Testing
 .pytest_cache/
 .coverage
