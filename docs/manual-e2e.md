@@ -43,7 +43,7 @@ export VERIFICATION_TOKEN=$(openssl rand -base64 32)
 export VERIFICATION_TOKEN=$(gcloud secrets versions access latest --secret=pubsub-verification-token)
 
 # Option 3: Use token from .env file (local development)
-export VERIFICATION_TOKEN=$(grep PUBSUB_VERIFICATION_TOKEN .env | cut -d '=' -f2)
+export VERIFICATION_TOKEN=$(grep -E '^PUBSUB_VERIFICATION_TOKEN=' .env | cut -d '=' -f2-)
 ```
 
 ## Test Environment Setup
@@ -801,126 +801,111 @@ curl -X POST ${SERVICE_URL}/pubsub/spec-status \
 
 ## Automated Test Script
 
-For convenience, here's a complete bash script to run the full E2E test:
+For convenience, the repository includes a complete bash script for automated E2E testing at `test-e2e.sh`. This script:
+
+- Validates prerequisites (jq installation)
+- Checks service health before testing
+- Creates a plan with 3 specs
+- Sends intermediate and terminal status updates
+- Verifies state transitions after each step
+- Validates final plan completion
+- Includes comprehensive error handling and response validation
+- Returns appropriate exit codes for CI/CD integration
+
+### Using the Script
 
 ```bash
-#!/bin/bash
-set -e
+# Make the script executable
+chmod +x test-e2e.sh
 
-# Configuration
-SERVICE_URL=${SERVICE_URL:-http://localhost:8080}
-VERIFICATION_TOKEN=${VERIFICATION_TOKEN:-test-token}
+# Set environment variables
+export SERVICE_URL=http://localhost:8080
+export VERIFICATION_TOKEN=$(openssl rand -base64 32)  # or retrieve from Secret Manager
 
-echo "=== Plan Scheduler E2E Test ==="
-echo "Service URL: ${SERVICE_URL}"
-echo ""
+# Run the test
+./test-e2e.sh
 
-# Step 1: Health check
-echo "Step 1: Checking service health..."
-curl -f ${SERVICE_URL}/health > /dev/null 2>&1 || {
-  echo "❌ Service is not healthy"
-  exit 1
-}
-echo "✅ Service is healthy"
-echo ""
-
-# Step 2: Create plan
-echo "Step 2: Creating test plan..."
-PLAN_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
-echo "Plan ID: ${PLAN_ID}"
-
-CREATE_RESPONSE=$(curl -s -X POST ${SERVICE_URL}/plans \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "'${PLAN_ID}'",
-    "specs": [
-      {"purpose": "Spec 0", "vision": "First spec"},
-      {"purpose": "Spec 1", "vision": "Second spec"},
-      {"purpose": "Spec 2", "vision": "Third spec"}
-    ]
-  }')
-
-echo "$CREATE_RESPONSE" | jq
-echo "✅ Plan created"
-echo ""
-
-# Helper function to send status update
-send_status_update() {
-  local spec_index=$1
-  local status=$2
-  local stage=${3:-""}
-  
-  if [ -n "$stage" ]; then
-    PAYLOAD='{"plan_id":"'${PLAN_ID}'","spec_index":'${spec_index}',"status":"'${status}'","stage":"'${stage}'"}'
-  else
-    PAYLOAD='{"plan_id":"'${PLAN_ID}'","spec_index":'${spec_index}',"status":"'${status}'"}'
-  fi
-  
-  ENCODED=$(echo -n "$PAYLOAD" | base64)
-  MESSAGE_ID="test-$(date +%s)-${spec_index}-${status}"
-  
-  curl -s -X POST ${SERVICE_URL}/pubsub/spec-status \
-    -H "Content-Type: application/json" \
-    -H "x-goog-pubsub-verification-token: ${VERIFICATION_TOKEN}" \
-    -d '{
-      "message": {
-        "data": "'${ENCODED}'",
-        "messageId": "'${MESSAGE_ID}'"
-      }
-    }' > /dev/null
-}
-
-# Step 3: Complete specs sequentially
-echo "Step 3: Completing specs..."
-
-for i in 0 1 2; do
-  echo "  Processing spec ${i}..."
-  
-  # Send intermediate update
-  send_status_update $i "running" "implementation"
-  sleep 1
-  
-  # Mark as finished
-  send_status_update $i "finished"
-  sleep 1
-  
-  # Verify state
-  CURRENT_STATE=$(curl -s ${SERVICE_URL}/plans/${PLAN_ID})
-  COMPLETED=$(echo "$CURRENT_STATE" | jq '.completed_specs')
-  echo "  ✅ Spec ${i} finished (completed: ${COMPLETED})"
-done
-
-echo ""
-
-# Step 4: Verify final state
-echo "Step 4: Verifying plan completion..."
-FINAL_STATE=$(curl -s ${SERVICE_URL}/plans/${PLAN_ID})
-echo "$FINAL_STATE" | jq
-
-OVERALL_STATUS=$(echo "$FINAL_STATE" | jq -r '.overall_status')
-COMPLETED_SPECS=$(echo "$FINAL_STATE" | jq '.completed_specs')
-TOTAL_SPECS=$(echo "$FINAL_STATE" | jq '.total_specs')
-
-if [ "$OVERALL_STATUS" = "finished" ] && [ "$COMPLETED_SPECS" -eq "$TOTAL_SPECS" ]; then
-  echo "✅ E2E Test PASSED"
-  echo "   - Plan status: ${OVERALL_STATUS}"
-  echo "   - Completed specs: ${COMPLETED_SPECS}/${TOTAL_SPECS}"
-  exit 0
-else
-  echo "❌ E2E Test FAILED"
-  echo "   - Plan status: ${OVERALL_STATUS} (expected: finished)"
-  echo "   - Completed specs: ${COMPLETED_SPECS}/${TOTAL_SPECS}"
-  exit 1
-fi
+# Expected output:
+# === Plan Scheduler E2E Test ===
+# Service URL: http://localhost:8080
+# 
+# Step 1: Checking service health...
+# ✅ Service is healthy
+# 
+# Step 2: Creating test plan...
+# Plan ID: 550e8400-e29b-41d4-a716-446655440000
+# {
+#   "plan_id": "550e8400-...",
+#   "status": "running"
+# }
+# ✅ Plan created
+# 
+# Step 3: Completing specs...
+#   Processing spec 0...
+#   ✅ Spec 0 finished (completed: 1)
+#   Processing spec 1...
+#   ✅ Spec 1 finished (completed: 2)
+#   Processing spec 2...
+#   ✅ Spec 2 finished (completed: 3)
+# 
+# Step 4: Verifying plan completion...
+# {
+#   "plan_id": "550e8400-...",
+#   "overall_status": "finished",
+#   "completed_specs": 3,
+#   "total_specs": 3,
+#   ...
+# }
+# 
+# ✅ E2E Test PASSED
+#    - Plan status: finished
+#    - Completed specs: 3/3
 ```
 
-Save this as `test-e2e.sh`, make it executable, and run:
+### Exit Codes
+
+- `0` - Test passed successfully
+- `1` - Test failed or error occurred
+
+### Prerequisites
+
+The script requires `jq` for JSON parsing. Install it if not already available:
 
 ```bash
-chmod +x test-e2e.sh
-export SERVICE_URL=http://localhost:8080
-export VERIFICATION_TOKEN=your-token
-./test-e2e.sh
+# macOS
+brew install jq
+
+# Ubuntu/Debian
+sudo apt-get install jq
+
+# CentOS/RHEL
+sudo yum install jq
+```
+
+### Error Handling
+
+The script includes comprehensive error handling:
+
+- **HTTP Status Validation**: Checks response codes for all requests
+- **JSON Parsing**: Validates JSON structure and required fields
+- **Service Health**: Fails fast if service is unavailable
+- **Response Validation**: Ensures expected state transitions occur
+- **Timeout Protection**: Uses `set -euo pipefail` for strict error handling
+- **Colored Output**: Clear visual indicators for success/failure
+
+### CI/CD Integration
+
+Use in GitHub Actions, GitLab CI, or other CI/CD pipelines:
+
+```yaml
+# Example: GitHub Actions
+- name: Run E2E Tests
+  env:
+    SERVICE_URL: ${{ secrets.SERVICE_URL }}
+    VERIFICATION_TOKEN: ${{ secrets.VERIFICATION_TOKEN }}
+  run: |
+    chmod +x test-e2e.sh
+    ./test-e2e.sh
 ```
 
 ## Related Documentation

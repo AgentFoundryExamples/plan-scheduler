@@ -88,26 +88,26 @@ Control external execution service integration:
 
 **Minimal Production Configuration (OIDC):**
 ```bash
-FIRESTORE_PROJECT_ID=my-project-123
+FIRESTORE_PROJECT_ID=${PROJECT_ID}
 PUBSUB_OIDC_ENABLED=true
-PUBSUB_EXPECTED_AUDIENCE=https://plan-scheduler-abc123-uc.a.run.app
-PUBSUB_SERVICE_ACCOUNT_EMAIL=pubsub-invoker@my-project-123.iam.gserviceaccount.com
+PUBSUB_EXPECTED_AUDIENCE=${SERVICE_URL}
+PUBSUB_SERVICE_ACCOUNT_EMAIL=${PUBSUB_SERVICE_ACCOUNT_EMAIL}
 ```
 
 **Minimal Production Configuration (Shared Token):**
 ```bash
-FIRESTORE_PROJECT_ID=my-project-123
+FIRESTORE_PROJECT_ID=${PROJECT_ID}
 PUBSUB_OIDC_ENABLED=false
-PUBSUB_VERIFICATION_TOKEN=your-secure-random-token
+PUBSUB_VERIFICATION_TOKEN=${PUBSUB_VERIFICATION_TOKEN}
 ```
 
 **Development/Testing Configuration:**
 ```bash
-FIRESTORE_PROJECT_ID=dev-project-123
+FIRESTORE_PROJECT_ID=${DEV_PROJECT_ID}
 LOG_LEVEL=DEBUG
 EXECUTION_ENABLED=false
 PUBSUB_OIDC_ENABLED=false
-PUBSUB_VERIFICATION_TOKEN=dev-test-token
+PUBSUB_VERIFICATION_TOKEN=${DEV_TOKEN}
 ```
 
 ### Using .env Files
@@ -318,7 +318,7 @@ echo -n "$TOKEN" | gcloud secrets create pubsub-verification-token \
 gcloud pubsub subscriptions create spec-status-push \
   --topic=spec-status-updates \
   --push-endpoint=${SERVICE_URL}/pubsub/spec-status \
-  --push-auth-token-header=x-goog-pubsub-verification-token=$TOKEN \
+  --push-auth-token-header="x-goog-pubsub-verification-token=$TOKEN" \
   --ack-deadline=60 \
   --min-retry-delay=10s \
   --max-retry-delay=600s \
@@ -503,20 +503,51 @@ gcloud run services update plan-scheduler \
   --update-secrets PUBSUB_VERIFICATION_TOKEN=pubsub-verification-token:latest \
   --project ${PROJECT_ID}
 
-# Step 4: Wait for all instances to restart (1-2 minutes)
-sleep 120
+# Step 4: Wait for all instances to restart and verify rollout completion
+echo "Waiting for service rollout to complete..."
+gcloud run services describe plan-scheduler \
+  --region ${REGION} \
+  --format='get(status.conditions)' \
+  --project ${PROJECT_ID}
+
+# Poll until rollout is complete (check every 10 seconds, max 3 minutes)
+for i in {1..18}; do
+  READY=$(gcloud run services describe plan-scheduler \
+    --region ${REGION} \
+    --format='value(status.conditions.status)' \
+    --project ${PROJECT_ID} 2>/dev/null || echo "Unknown")
+  
+  if [[ "$READY" == *"True"* ]]; then
+    echo "✅ Service rollout complete"
+    break
+  fi
+  
+  if [ $i -eq 18 ]; then
+    echo "⚠️  Timeout waiting for rollout. Check service status manually."
+    exit 1
+  fi
+  
+  echo "Waiting for instances to restart... ($((i * 10))s)"
+  sleep 10
+done
 
 # Step 5: Update Pub/Sub subscription
 gcloud pubsub subscriptions update spec-status-push \
-  --push-auth-token-header=x-goog-pubsub-verification-token=$NEW_TOKEN \
+  --push-auth-token-header="x-goog-pubsub-verification-token=$NEW_TOKEN" \
   --project ${PROJECT_ID}
 
-# Step 6: Verify in logs
+# Step 6: Verify token rotation by checking logs for successful authentication
+echo "Verifying new token is working..."
 gcloud run services logs read plan-scheduler \
   --region=${REGION} \
   --limit=10 \
-  --project ${PROJECT_ID}
+  --project ${PROJECT_ID} \
+  | grep -i "authenticated" || echo "⚠️  No authentication logs found yet. Check again in a few moments."
+
+echo "✅ Token rotation complete"
 ```
+
+**Important**: The old token remains valid in any running instances until they restart. The script above waits for Cloud Run to complete the rollout before updating the Pub/Sub subscription, ensuring zero downtime.
 
 ### Service Account Best Practices
 
@@ -611,6 +642,18 @@ The service emits structured JSON logs with the following key events:
 | Authentication success | INFO | Request authenticated successfully |
 | Authentication failure | WARNING | Invalid or missing credentials |
 | Out-of-order events | ERROR | Spec finished out of sequence |
+
+### Secure Logging Practices
+
+The service implements secure logging practices to protect sensitive data:
+
+- **Never logs sensitive data**: Tokens, credentials, and personal information are excluded from logs
+- **Automatic payload sanitization**: Raw payloads are truncated to prevent log bloat and data exposure
+- **Structured JSON format**: Facilitates parsing, filtering, and security analysis
+- **Authentication failures logged**: Monitor for potential security issues
+- **Log retention**: Configure retention policies to comply with data retention requirements
+
+For complete logging documentation, see the [main README - Secure Logging Practices](../README.md#pubsub-webhook).
 
 ### Health Endpoints
 
@@ -834,7 +877,12 @@ Throughout this guide, replace the following placeholders with your actual value
 - `${PROJECT_ID}` - Your Google Cloud project ID
 - `${REGION}` - Your desired Cloud Run region (e.g., `us-central1`)
 - `${SERVICE_URL}` - Your Cloud Run service URL
-- `your-secure-token` - Generate with `openssl rand -base64 32`
 - `${PROJECT_NUMBER}` - Your GCP project number (find in Console or via `gcloud projects describe ${PROJECT_ID}`)
+- `${PUBSUB_SERVICE_ACCOUNT_EMAIL}` - Email of the Pub/Sub service account (e.g., `pubsub-invoker@${PROJECT_ID}.iam.gserviceaccount.com`)
+- `${PUBSUB_VERIFICATION_TOKEN}` - Generate with `openssl rand -base64 32` and store in Secret Manager
+- `${DEV_PROJECT_ID}` - Development/testing project ID
+- `${DEV_TOKEN}` - Development/testing token (generate with `openssl rand -base64 32`)
+
+**Security Note**: Never commit hardcoded tokens or credentials. Always use placeholders in documentation and Secret Manager for actual deployments.
 
 All example commands avoid hardcoding specific project values to ensure they work across different environments.
