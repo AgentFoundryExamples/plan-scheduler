@@ -443,6 +443,130 @@ The Firestore service provides clear, actionable error messages:
 
 **Interactive API Documentation:** The service provides auto-generated API documentation via FastAPI's built-in OpenAPI support. See the [Run the Service](#3-run-the-service) section for documentation URLs (`/docs`, `/redoc`, `/openapi.json`).
 
+### Status Response Models
+
+The service defines two canonical response models for status queries, designed to provide consistent and type-safe status information to external integrators.
+
+#### SpecStatusOut
+
+Lightweight status view of a single spec without exposing internal details like purpose, vision, or history.
+
+**Fields:**
+- `spec_index` (int, required): Zero-based index of the spec in the plan. Must be non-negative.
+- `status` (string, required): Spec execution status. Must be one of: `"blocked"`, `"running"`, `"finished"`, `"failed"`.
+- `stage` (string, optional): Optional execution stage/phase (e.g., `"implementation"`, `"reviewing"`, `"testing"`). Provides finer-grained progress tracking within a spec.
+- `updated_at` (datetime, required): ISO 8601 timestamp when spec was last updated. Always timezone-aware (UTC).
+
+**Status Values:**
+- `"blocked"`: Spec is waiting for dependencies or prerequisites (typically earlier specs)
+- `"running"`: Spec is currently being executed
+- `"finished"`: Spec completed successfully
+- `"failed"`: Spec execution failed
+
+**Validation Rules:**
+- Rejects invalid status strings (returns `ValidationError`)
+- Rejects negative `spec_index` values (returns `ValidationError`)
+- Converts naive datetimes to UTC automatically
+- Stage field is optional and can be `null`
+
+**Example:**
+```json
+{
+  "spec_index": 1,
+  "status": "running",
+  "stage": "implementation",
+  "updated_at": "2025-01-01T12:30:00Z"
+}
+```
+
+#### PlanStatusOut
+
+Complete plan status including all spec statuses. Designed for status polling and progress tracking.
+
+**Fields:**
+- `plan_id` (string, required): Plan identifier as UUID string
+- `overall_status` (string, required): Overall plan status. Must be one of: `"running"`, `"finished"`, `"failed"`.
+- `created_at` (datetime, required): ISO 8601 timestamp when plan was created (UTC)
+- `updated_at` (datetime, required): ISO 8601 timestamp when plan was last updated (UTC)
+- `total_specs` (int, required): Total number of specs in the plan. Must be non-negative.
+- `completed_specs` (int, required): Number of specs with status `"finished"`. Must be non-negative.
+- `current_spec_index` (int, optional): Index of the currently running spec. `null` if no spec is running (e.g., plan finished or failed).
+- `specs` (array, required): Array of `SpecStatusOut` objects, one per spec in the plan.
+
+**Status Values:**
+- `"running"`: Plan is currently being executed (one or more specs are not yet finished)
+- `"finished"`: All specs in the plan completed successfully
+- `"failed"`: Plan execution failed (one or more specs failed)
+
+**Validation Rules:**
+- Rejects invalid overall_status strings (returns `ValidationError`)
+- Validates counters are non-negative (returns `ValidationError`)
+- Converts naive datetimes to UTC automatically
+- Current_spec_index can be `null` when plan is finished/failed
+
+**Helper Methods:**
+
+The `PlanStatusOut.from_records()` class method constructs a `PlanStatusOut` from Firestore records and automatically computes derived fields:
+
+- `completed_specs`: Counts specs with status `"finished"`
+- `current_spec_index`: Finds the first spec with status `"running"`, or `null` if none
+
+This keeps API handlers simple and ensures consistency across all status endpoints.
+
+**Example:**
+```json
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+  "overall_status": "running",
+  "created_at": "2025-01-01T12:00:00Z",
+  "updated_at": "2025-01-01T12:30:00Z",
+  "total_specs": 3,
+  "completed_specs": 1,
+  "current_spec_index": 1,
+  "specs": [
+    {
+      "spec_index": 0,
+      "status": "finished",
+      "stage": null,
+      "updated_at": "2025-01-01T12:15:00Z"
+    },
+    {
+      "spec_index": 1,
+      "status": "running",
+      "stage": "implementation",
+      "updated_at": "2025-01-01T12:30:00Z"
+    },
+    {
+      "spec_index": 2,
+      "status": "blocked",
+      "stage": null,
+      "updated_at": "2025-01-01T12:00:00Z"
+    }
+  ]
+}
+```
+
+**Usage in API Handlers:**
+
+```python
+from app.models.plan import PlanStatusOut
+
+# Fetch plan and spec records from Firestore
+plan_record = get_plan_from_firestore(plan_id)
+spec_records = get_specs_from_firestore(plan_id)
+
+# Construct response using helper
+status_response = PlanStatusOut.from_records(plan_record, spec_records)
+return status_response
+```
+
+**Important Notes:**
+- All timestamps are timezone-aware (UTC) to prevent serialization inconsistencies
+- Status vocabulary is enforced at the model level using validators
+- Negative indexes are rejected with clear validation errors
+- These models do **not** expose spec purpose, vision, or history to keep responses lightweight
+- The `from_records()` helper ensures completed_specs and current_spec_index are always computed consistently
+
 ### Health Check
 
 **GET /health**

@@ -15,8 +15,9 @@
 
 This module defines:
 1. Request/response schemas (SpecIn, PlanIn, PlanCreateResponse) for API contracts
-2. Internal record definitions (SpecRecord, PlanRecord) for Firestore storage
-3. Factory helpers for creating initial records with consistent defaults
+2. Status response schemas (SpecStatusOut, PlanStatusOut) for status query endpoints
+3. Internal record definitions (SpecRecord, PlanRecord) for Firestore storage
+4. Factory helpers for creating initial records with consistent defaults
 
 Status Values:
 - SpecRecord.status: "blocked" | "running" | "finished" | "failed"
@@ -24,10 +25,28 @@ Status Values:
 """
 
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class SpecStatus(str, Enum):
+    """Valid spec status values."""
+
+    BLOCKED = "blocked"
+    RUNNING = "running"
+    FINISHED = "finished"
+    FAILED = "failed"
+
+
+class PlanStatus(str, Enum):
+    """Valid plan status values."""
+
+    RUNNING = "running"
+    FINISHED = "finished"
+    FAILED = "failed"
 
 
 class SpecIn(BaseModel):
@@ -87,6 +106,154 @@ class PlanIn(BaseModel):
         if not self.specs or len(self.specs) == 0:
             raise ValueError("At least one specification must be provided")
         return self
+
+
+class SpecStatusOut(BaseModel):
+    """
+    Response model for spec status queries.
+
+    Provides a lightweight status view of a spec without exposing internal details
+    like purpose, vision, or history. Only includes execution state and progress metadata.
+
+    All timestamps are timezone-aware (UTC).
+    """
+
+    spec_index: int = Field(..., description="Index of the spec in the plan", ge=0)
+    status: str = Field(
+        ...,
+        description="Spec status: blocked, running, finished, or failed",
+    )
+    stage: str | None = Field(
+        default=None,
+        description="Optional execution stage/phase (e.g., 'implementation', 'reviewing')",
+    )
+    updated_at: datetime = Field(..., description="Timestamp when spec was last updated (UTC)")
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        """Validate status is one of the supported values."""
+        valid_statuses = {s.value for s in SpecStatus}
+        if v not in valid_statuses:
+            raise ValueError(f"Invalid spec status: {v}. Must be one of {sorted(valid_statuses)}")
+        return v
+
+    @field_validator("spec_index")
+    @classmethod
+    def validate_spec_index(cls, v: int) -> int:
+        """Validate spec_index is non-negative."""
+        if v < 0:
+            raise ValueError("spec_index must be non-negative")
+        return v
+
+    @field_validator("updated_at", mode="before")
+    @classmethod
+    def ensure_timezone_aware(cls, v: Any) -> datetime:
+        """Ensure updated_at is timezone-aware (UTC)."""
+        if isinstance(v, datetime):
+            if v.tzinfo is None:
+                return v.replace(tzinfo=UTC)
+            return v
+        return v
+
+
+class PlanStatusOut(BaseModel):
+    """
+    Response model for plan status queries.
+
+    Provides complete plan status including all spec statuses. Designed for
+    status polling and progress tracking by external integrators.
+
+    Helper methods compute completed_specs and current_spec_index from the specs list
+    to ensure consistency and avoid duplicating logic in API handlers.
+
+    All timestamps are timezone-aware (UTC).
+    """
+
+    plan_id: str = Field(..., description="Plan identifier as UUID string")
+    overall_status: str = Field(
+        ...,
+        description="Overall plan status: running, finished, or failed",
+    )
+    created_at: datetime = Field(..., description="Timestamp when plan was created (UTC)")
+    updated_at: datetime = Field(..., description="Timestamp when plan was last updated (UTC)")
+    total_specs: int = Field(..., description="Total number of specs in the plan", ge=0)
+    completed_specs: int = Field(..., description="Number of completed specs", ge=0)
+    current_spec_index: int | None = Field(
+        default=None,
+        description="Index of the currently running spec (null if none running)",
+    )
+    specs: list[SpecStatusOut] = Field(..., description="List of spec statuses")
+
+    @field_validator("overall_status")
+    @classmethod
+    def validate_overall_status(cls, v: str) -> str:
+        """Validate overall_status is one of the supported values."""
+        valid_statuses = {s.value for s in PlanStatus}
+        if v not in valid_statuses:
+            raise ValueError(f"Invalid plan status: {v}. Must be one of {sorted(valid_statuses)}")
+        return v
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def ensure_timezone_aware(cls, v: Any) -> datetime:
+        """Ensure timestamps are timezone-aware (UTC)."""
+        if isinstance(v, datetime):
+            if v.tzinfo is None:
+                return v.replace(tzinfo=UTC)
+            return v
+        return v
+
+    @classmethod
+    def from_records(
+        cls,
+        plan_record: "PlanRecord",
+        spec_records: list["SpecRecord"],
+    ) -> "PlanStatusOut":
+        """
+        Helper to construct PlanStatusOut from PlanRecord and SpecRecords.
+
+        Automatically computes completed_specs and current_spec_index from the
+        spec records to ensure consistency.
+
+        Args:
+            plan_record: The plan record from Firestore
+            spec_records: List of spec records from Firestore (should be sorted by spec_index)
+
+        Returns:
+            PlanStatusOut with all fields populated correctly
+        """
+        # Convert spec records to status out
+        spec_statuses = [
+            SpecStatusOut(
+                spec_index=spec.spec_index,
+                status=spec.status,
+                stage=getattr(spec, "current_stage", None),
+                updated_at=spec.updated_at,
+            )
+            for spec in spec_records
+        ]
+
+        # Compute completed_specs
+        completed_specs = sum(1 for spec in spec_records if spec.status == "finished")
+
+        # Compute current_spec_index (first running spec, or None if none)
+        current_spec_index = None
+        for spec in spec_records:
+            if spec.status == "running":
+                current_spec_index = spec.spec_index
+                break
+
+        return cls(
+            plan_id=plan_record.plan_id,
+            overall_status=plan_record.overall_status,
+            created_at=plan_record.created_at,
+            updated_at=plan_record.updated_at,
+            total_specs=plan_record.total_specs,
+            completed_specs=completed_specs,
+            current_spec_index=current_spec_index,
+            specs=spec_statuses,
+        )
 
 
 class PlanCreateResponse(BaseModel):
@@ -152,6 +319,10 @@ class SpecRecord(BaseModel):
         description=(
             "Timestamp of most recent execution trigger " "(updated by trigger_spec_execution, UTC)"
         ),
+    )
+    current_stage: str | None = Field(
+        default=None,
+        description="Optional execution stage/phase (e.g., 'implementation', 'reviewing')",
     )
     history: list[dict[str, Any]] = Field(
         default_factory=list,
