@@ -1222,6 +1222,164 @@ print(f"Status: {response.status_code}")
 print(f"Response: {response.json()}")
 ```
 
+### Plan Status Query
+
+**GET /plans/{plan_id}**
+
+Retrieves the current status of a plan and all its specifications. This endpoint provides a lightweight status view without exposing internal details like spec contents, history, or raw payloads.
+
+**Authentication:** This endpoint is currently **public** and does not require authentication. For production deployments, consider implementing authentication based on your security requirements.
+
+#### Path Parameters
+
+- `plan_id` (string, required): Plan identifier as UUID string
+
+#### Query Parameters
+
+- `include_stage` (boolean, optional): Include stage field in spec statuses (default: `true`)
+  - When `true`: Includes the `stage` field in each spec status (e.g., `"implementation"`, `"reviewing"`)
+  - When `false`: Sets the `stage` field to `null` for all specs
+
+#### Response Codes
+
+- **200 OK**: Plan status retrieved successfully
+- **404 Not Found**: Plan does not exist
+- **500 Internal Server Error**: Server-side error (Firestore unavailable, etc.)
+
+#### Success Response (200 OK)
+
+```json
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+  "overall_status": "running",
+  "created_at": "2025-01-01T12:00:00Z",
+  "updated_at": "2025-01-01T12:30:00Z",
+  "total_specs": 3,
+  "completed_specs": 1,
+  "current_spec_index": 1,
+  "specs": [
+    {
+      "spec_index": 0,
+      "status": "finished",
+      "stage": null,
+      "updated_at": "2025-01-01T12:15:00Z"
+    },
+    {
+      "spec_index": 1,
+      "status": "running",
+      "stage": "implementation",
+      "updated_at": "2025-01-01T12:30:00Z"
+    },
+    {
+      "spec_index": 2,
+      "status": "blocked",
+      "stage": null,
+      "updated_at": "2025-01-01T12:00:00Z"
+    }
+  ]
+}
+```
+
+#### Error Responses
+
+**Not Found (404):**
+```json
+{
+  "detail": "Plan not found"
+}
+```
+
+**Server Error (500):**
+```json
+{
+  "detail": "Internal server error"
+}
+```
+
+#### Response Fields
+
+**Plan Level:**
+- `plan_id` (string): Plan identifier as UUID string
+- `overall_status` (string): Overall plan status (`"running"`, `"finished"`, or `"failed"`)
+- `created_at` (datetime): Timestamp when plan was created (UTC, ISO 8601)
+- `updated_at` (datetime): Timestamp when plan was last updated (UTC, ISO 8601)
+- `total_specs` (integer): Total number of specs in the plan
+- `completed_specs` (integer): Number of specs with status `"finished"` (computed from specs list)
+- `current_spec_index` (integer or null): Index of the currently running spec, or `null` if no spec is running
+- `specs` (array): Array of spec status objects
+
+**Spec Level:**
+- `spec_index` (integer): Zero-based index of the spec in the plan
+- `status` (string): Spec status (`"blocked"`, `"running"`, `"finished"`, or `"failed"`)
+- `stage` (string or null): Optional execution stage/phase (e.g., `"implementation"`, `"reviewing"`)
+- `updated_at` (datetime): Timestamp when spec was last updated (UTC, ISO 8601)
+
+#### Firestore Index Requirements
+
+The endpoint uses a single query to fetch all specs ordered by `spec_index` in ascending order:
+
+```
+specs_query = specs_ref.order_by("spec_index", direction=firestore.Query.ASCENDING)
+```
+
+**No composite index is required** because this query operates on a subcollection and sorts on a single field. Firestore automatically creates a single-field index for `spec_index` when the first document is created.
+
+#### Performance Characteristics
+
+- **Query Efficiency**: Fetches plan and all specs with 2 Firestore reads (1 document read + 1 collection query)
+- **Response Time**: Typically < 200ms for plans with up to 100 specs
+- **No N+1 Queries**: All specs are fetched in a single query, not one-by-one
+
+#### Edge Cases
+
+- **Plans with zero specs**: Returns `specs: []` with `completed_specs: 0` and `current_spec_index: null`
+- **Specs without stage data**: Serializes `stage: null` by default
+- **include_stage=false**: Sets all `stage` fields to `null` in the response
+
+#### Example Usage
+
+**Using curl:**
+
+```bash
+# Get plan status with stage information (default)
+curl http://localhost:8080/plans/550e8400-e29b-41d4-a716-446655440000
+
+# Get plan status without stage information
+curl "http://localhost:8080/plans/550e8400-e29b-41d4-a716-446655440000?include_stage=false"
+```
+
+**Using Python with httpx:**
+
+```python
+import httpx
+
+plan_id = "550e8400-e29b-41d4-a716-446655440000"
+
+# Get plan status with stage information
+response = httpx.get(f"http://localhost:8080/plans/{plan_id}")
+print(f"Status: {response.status_code}")
+print(f"Plan Status: {response.json()}")
+
+# Get plan status without stage information
+response = httpx.get(
+    f"http://localhost:8080/plans/{plan_id}",
+    params={"include_stage": False}
+)
+print(f"Status: {response.status_code}")
+print(f"Plan Status (no stage): {response.json()}")
+```
+
+#### What's Not Included
+
+This endpoint intentionally omits heavy fields to keep responses lightweight:
+- Spec contents (`purpose`, `vision`, `must`, `dont`, `nice`, `assumptions`)
+- Spec history (status transition history)
+- Raw Pub/Sub payloads
+- Plan raw_request payload
+- Verification tokens or internal-only metadata
+
+For full spec details, use the appropriate spec detail endpoint (if available) or query Firestore directly.
+
 ## Error Handling
 
 - **Invalid PORT**: Non-integer or out-of-range PORT values (not 1-65535) will raise a clear validation error

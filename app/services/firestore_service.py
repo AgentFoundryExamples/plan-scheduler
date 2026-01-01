@@ -853,3 +853,64 @@ def process_spec_status_update(
         )
         logger.error(error_msg)
         raise FirestoreOperationError(error_msg) from e
+
+
+def get_plan_with_specs(
+    plan_id: str, client: firestore.Client | None = None
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """
+    Fetch a plan document and all its specs in an efficient manner.
+
+    This function retrieves the plan metadata and all spec documents using
+    a single query for specs ordered by spec_index ascending. It does NOT
+    include heavy fields like history or raw_request in the return values.
+
+    Args:
+        plan_id: The plan ID to fetch
+        client: Optional Firestore client (uses get_client() if not provided)
+
+    Returns:
+        Tuple of (plan_data, spec_list)
+        - plan_data: Dictionary of plan fields, or None if plan not found
+        - spec_list: List of spec dictionaries sorted by spec_index (empty list if plan not found)
+
+    Raises:
+        FirestoreOperationError: When Firestore operation fails
+    """
+    if client is None:
+        client = get_client()
+
+    try:
+        # Fetch plan document
+        plan_ref = client.collection("plans").document(plan_id)
+        plan_snapshot = plan_ref.get()
+
+        if not plan_snapshot.exists:
+            logger.info(f"Plan {plan_id} not found")
+            return None, []
+
+        plan_data = plan_snapshot.to_dict()
+        if not plan_data:
+            raise FirestoreOperationError(f"Plan document {plan_id} exists but is empty")
+
+        # Fetch all spec documents ordered by spec_index
+        # Firestore composite indexes are NOT required for subcollection queries
+        # that only sort on a single field within the subcollection
+        specs_ref = plan_ref.collection("specs")
+        specs_query = specs_ref.order_by("spec_index", direction=firestore.Query.ASCENDING)
+        spec_docs = list(specs_query.stream())
+
+        # Extract spec data from documents (filtering ensures we only get valid specs)
+        spec_list = [spec_doc.to_dict() for spec_doc in spec_docs if spec_doc.to_dict()]
+
+        logger.info(
+            f"Fetched plan {plan_id} with {len(spec_list)} specs",
+            extra={"plan_id": plan_id, "spec_count": len(spec_list)},
+        )
+
+        return plan_data, spec_list
+
+    except gcp_exceptions.GoogleAPICallError as e:
+        error_msg = f"Firestore API error fetching plan {plan_id}: {str(e)}"
+        logger.error(error_msg)
+        raise FirestoreOperationError(error_msg) from e

@@ -183,16 +183,19 @@ class PlanStatusOut(BaseModel):
         cls,
         plan_record: "PlanRecord",
         spec_records: list["SpecRecord"],
+        include_stage: bool = True,
     ) -> "PlanStatusOut":
         """
         Helper to construct PlanStatusOut from PlanRecord and SpecRecords.
 
         Automatically computes completed_specs and current_spec_index from the
-        spec records to ensure consistency.
+        spec records to ensure consistency. Also validates that total_specs matches
+        the actual number of spec records.
 
         Args:
             plan_record: The plan record from Firestore
             spec_records: List of spec records from Firestore (should be sorted by spec_index)
+            include_stage: Whether to include stage field in spec statuses (default: True)
 
         Returns:
             PlanStatusOut with all fields populated correctly
@@ -202,13 +205,13 @@ class PlanStatusOut(BaseModel):
             SpecStatusOut(
                 spec_index=spec.spec_index,
                 status=spec.status,
-                stage=getattr(spec, "current_stage", None),
+                stage=getattr(spec, "current_stage", None) if include_stage else None,
                 updated_at=spec.updated_at,
             )
             for spec in spec_records
         ]
 
-        # Compute completed_specs
+        # Compute completed_specs from actual spec records
         completed_specs = sum(
             1 for spec in spec_records if spec.status == SpecStatus.FINISHED.value
         )
@@ -219,12 +222,15 @@ class PlanStatusOut(BaseModel):
             None,
         )
 
+        # Compute total_specs from actual spec records to ensure accuracy
+        total_specs = len(spec_records)
+
         return cls(
             plan_id=plan_record.plan_id,
             overall_status=plan_record.overall_status,
             created_at=plan_record.created_at,
             updated_at=plan_record.updated_at,
-            total_specs=plan_record.total_specs,
+            total_specs=total_specs,
             completed_specs=completed_specs,
             current_spec_index=current_spec_index,
             specs=spec_statuses,

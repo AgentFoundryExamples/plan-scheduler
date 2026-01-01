@@ -89,7 +89,9 @@ def mock_dependencies():
         spec_doc_snapshot = MagicMock()
         spec_doc_snapshot.exists = True
         spec_doc_snapshot.to_dict.return_value = mock_spec_record.model_dump()
-        client_mock.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
+        # Set up nested mock chain for Firestore spec document access
+        spec_doc_ref = client_mock.collection.return_value.document.return_value
+        spec_doc_ref.collection.return_value.document.return_value.get.return_value = (
             spec_doc_snapshot
         )
         mock_client.return_value = client_mock
@@ -616,3 +618,357 @@ def test_create_plan_with_multiple_specs_only_triggers_spec_0(client, valid_plan
         spec_data = call_args[1]["spec_data"]
         assert spec_data.purpose == first_spec["purpose"]
         assert spec_data.vision == first_spec["vision"]
+
+
+# Tests for GET /plans/{plan_id} endpoint
+
+
+def test_get_plan_status_success(client):
+    """Test that GET /plans/{plan_id} returns plan status successfully."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    # Mock Firestore data
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 2,
+        "completed_specs": 1,
+        "current_spec_index": 1,
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    spec_data_list = [
+        {
+            "spec_index": 0,
+            "purpose": "First spec",
+            "vision": "First vision",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "finished",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": None,
+            "history": [],
+        },
+        {
+            "spec_index": 1,
+            "purpose": "Second spec",
+            "vision": "Second vision",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "running",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": "implementation",
+            "history": [],
+        },
+    ]
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, spec_data_list)
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["plan_id"] == plan_id
+        assert data["overall_status"] == "running"
+        assert data["total_specs"] == 2
+        assert data["completed_specs"] == 1
+        assert data["current_spec_index"] == 1
+        assert len(data["specs"]) == 2
+        assert data["specs"][0]["spec_index"] == 0
+        assert data["specs"][0]["status"] == "finished"
+        assert data["specs"][1]["spec_index"] == 1
+        assert data["specs"][1]["status"] == "running"
+        assert data["specs"][1]["stage"] == "implementation"
+
+
+def test_get_plan_status_not_found(client):
+    """Test that GET /plans/{plan_id} returns 404 for non-existent plan."""
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (None, [])
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 404
+        data = response.json()
+        assert data["detail"] == "Plan not found"
+
+
+def test_get_plan_status_with_include_stage_false(client):
+    """Test that include_stage=false removes stage field from spec statuses."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    # Mock Firestore data with stage values
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 1,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    spec_data_list = [
+        {
+            "spec_index": 0,
+            "purpose": "Test spec",
+            "vision": "Test vision",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "running",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": "implementation",
+            "history": [],
+        }
+    ]
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, spec_data_list)
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}?include_stage=false")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["plan_id"] == plan_id
+        assert len(data["specs"]) == 1
+        # Stage should be null when include_stage=false
+        assert data["specs"][0]["stage"] is None
+
+
+def test_get_plan_status_with_include_stage_default_true(client):
+    """Test that include_stage defaults to true and includes stage field."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 1,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    spec_data_list = [
+        {
+            "spec_index": 0,
+            "purpose": "Test spec",
+            "vision": "Test vision",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "running",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": "reviewing",
+            "history": [],
+        }
+    ]
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, spec_data_list)
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["specs"][0]["stage"] == "reviewing"
+
+
+def test_get_plan_status_with_zero_specs(client):
+    """Test that plans with zero specs return correctly."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 0,
+        "completed_specs": 0,
+        "current_spec_index": None,
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, [])
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["plan_id"] == plan_id
+        assert data["total_specs"] == 0
+        assert data["completed_specs"] == 0
+        assert data["current_spec_index"] is None
+        assert data["specs"] == []
+
+
+def test_get_plan_status_firestore_error_returns_500(client):
+    """Test that Firestore errors return 500 Internal Server Error."""
+    from unittest.mock import MagicMock
+
+    from app.services.firestore_service import FirestoreOperationError
+
+    plan_id = str(uuid.uuid4())
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.side_effect = FirestoreOperationError("Firestore error")
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 500
+        data = response.json()
+        assert data["detail"] == "Internal server error"
+
+
+def test_get_plan_status_unexpected_error_returns_500(client):
+    """Test that unexpected errors return 500 Internal Server Error."""
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.side_effect = Exception("Unexpected error")
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 500
+        data = response.json()
+        assert data["detail"] == "Internal server error"
+
+
+def test_get_plan_status_endpoint_in_openapi_docs(client):
+    """Test that GET /plans/{plan_id} endpoint is documented in OpenAPI schema."""
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    openapi_data = response.json()
+    assert "/plans/{plan_id}" in openapi_data["paths"]
+    assert "get" in openapi_data["paths"]["/plans/{plan_id}"]
+
+    get_spec = openapi_data["paths"]["/plans/{plan_id}"]["get"]
+    assert "parameters" in get_spec
+    assert "responses" in get_spec
+    assert "200" in get_spec["responses"]
+    assert "404" in get_spec["responses"]
+    assert "500" in get_spec["responses"]
+
+
+def test_get_plan_status_logs_retrieval_attempt(client, caplog):
+    """Test that plan status retrieval attempts are logged."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 0,
+        "completed_specs": 0,
+        "current_spec_index": None,
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, [])
+        mock_client.return_value = MagicMock()
+
+        with caplog.at_level("INFO"):
+            response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 200
+        log_messages = [record.message for record in caplog.records]
+        assert any("Plan status retrieval request received" in msg for msg in log_messages)
+        assert any("Plan status retrieved successfully" in msg for msg in log_messages)
+
+
+def test_get_plan_status_logs_not_found(client, caplog):
+    """Test that plan not found is logged."""
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (None, [])
+        mock_client.return_value = MagicMock()
+
+        with caplog.at_level("WARNING"):
+            response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 404
+        log_messages = [record.message for record in caplog.records]
+        assert any("Plan not found" in msg for msg in log_messages)
