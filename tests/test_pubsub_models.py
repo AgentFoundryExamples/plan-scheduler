@@ -165,6 +165,62 @@ class TestSpecStatusPayload:
 
         assert payload.timestamp == timestamp
 
+    def test_timestamp_validation_iso8601_with_z(self):
+        """Test timestamp validation accepts ISO 8601 format with Z."""
+        plan_id = str(uuid4())
+        valid_timestamps = [
+            "2025-01-01T12:00:00Z",
+            "2025-01-01T12:00:00.123Z",
+            "2025-12-31T23:59:59Z",
+        ]
+
+        for timestamp in valid_timestamps:
+            payload = SpecStatusPayload(
+                plan_id=plan_id, spec_index=0, status="running", timestamp=timestamp
+            )
+            assert payload.timestamp == timestamp
+
+    def test_timestamp_validation_iso8601_with_offset(self):
+        """Test timestamp validation accepts ISO 8601 format with timezone offset."""
+        plan_id = str(uuid4())
+        valid_timestamps = [
+            "2025-01-01T12:00:00+00:00",
+            "2025-01-01T12:00:00-05:00",
+            "2025-01-01T12:00:00.123+01:00",
+        ]
+
+        for timestamp in valid_timestamps:
+            payload = SpecStatusPayload(
+                plan_id=plan_id, spec_index=0, status="running", timestamp=timestamp
+            )
+            assert payload.timestamp == timestamp
+
+    def test_timestamp_validation_rejects_invalid_format(self):
+        """Test timestamp validation rejects invalid formats."""
+        plan_id = str(uuid4())
+        invalid_timestamps = [
+            "2025-01-01",  # Date only
+            "12:00:00",  # Time only
+            "not-a-timestamp",  # Invalid string
+            "2025/01/01 12:00:00",  # Wrong format
+            "Jan 1, 2025",  # Human readable
+        ]
+
+        for timestamp in invalid_timestamps:
+            with pytest.raises(ValidationError) as exc_info:
+                SpecStatusPayload(
+                    plan_id=plan_id, spec_index=0, status="running", timestamp=timestamp
+                )
+            errors = exc_info.value.errors()
+            assert any("timestamp" in str(e) for e in errors)
+
+    def test_timestamp_empty_string_treated_as_none(self):
+        """Test that empty string timestamp is treated as None."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(plan_id=plan_id, spec_index=0, status="running", timestamp="")
+
+        assert payload.timestamp is None
+
     def test_all_optional_fields_together(self):
         """Test all optional fields can be used together."""
         plan_id = str(uuid4())

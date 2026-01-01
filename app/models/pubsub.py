@@ -21,6 +21,10 @@ This module defines:
 
 All models enforce that plan_id and spec_index are present to ensure Pub/Sub
 callbacks can always resolve the relevant spec for updates.
+
+Terminal Statuses:
+Only lowercase "finished" and "failed" trigger state machine transitions.
+All other status values (including uppercase variants) are informational.
 """
 
 import base64
@@ -29,6 +33,10 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
+
+# Terminal status values that trigger state machine transitions
+# IMPORTANT: These are case-sensitive. Only lowercase values are terminal.
+TERMINAL_STATUSES = frozenset(["finished", "failed"])
 
 
 class SpecStatusPayload(BaseModel):
@@ -83,6 +91,48 @@ class SpecStatusPayload(BaseModel):
         default=None,
         description="Optional timestamp for when this status occurred (ISO 8601 format)",
     )
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def validate_timestamp_format(cls, v: Any) -> str | None:
+        """
+        Validate that timestamp is in ISO 8601 format if provided.
+
+        This prevents injection of arbitrary strings and ensures consistent
+        timestamp format in history entries. Requires full datetime with timezone.
+
+        Args:
+            v: The timestamp value (string or None)
+
+        Returns:
+            The validated timestamp string or None
+
+        Raises:
+            ValueError: If timestamp is provided but not in valid ISO 8601 format
+        """
+        if v is None or v == "":
+            return None
+
+        if not isinstance(v, str):
+            raise ValueError(f"Timestamp must be a string, got {type(v).__name__}")
+
+        # Require 'T' separator (ensures both date and time are present)
+        if "T" not in v:
+            raise ValueError(
+                f"Timestamp must include both date and time separated by 'T'. "
+                f"Example: '2025-01-01T12:00:00Z'. Got: {v}"
+            )
+
+        # Validate ISO 8601 format by attempting to parse
+        try:
+            datetime.fromisoformat(v.replace("Z", "+00:00"))
+        except (ValueError, AttributeError) as e:
+            raise ValueError(
+                f"Timestamp must be in ISO 8601 format (e.g., '2025-01-01T12:00:00Z' "
+                f"or '2025-01-01T12:00:00+00:00'). Got: {v}"
+            ) from e
+
+        return v
 
 
 class PubSubMessage(BaseModel):

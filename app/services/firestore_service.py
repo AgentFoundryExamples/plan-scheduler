@@ -59,6 +59,7 @@ from google.cloud import firestore
 
 from app.config import get_settings
 from app.models.plan import PlanIn, create_initial_plan_record, create_initial_spec_record
+from app.models.pubsub import TERMINAL_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -673,9 +674,12 @@ def process_spec_status_update(
                 return
 
         # Step 4: Validate ordering for terminal statuses
+        # IMPORTANT: Terminal status checks are CASE-SENSITIVE
+        # Only lowercase "finished" and "failed" are terminal and trigger transitions
+        # Uppercase variants like "FINISHED" or "Failed" are treated as informational
         current_spec_status = spec_data.get("status")
-        is_terminal_status = status in ["finished", "failed"]
-        is_already_terminal = current_spec_status in ["finished", "failed"]
+        is_terminal_status = status in TERMINAL_STATUSES
+        is_already_terminal = current_spec_status in TERMINAL_STATUSES
 
         # Detect duplicate terminal status on same spec
         if is_terminal_status and is_already_terminal:
