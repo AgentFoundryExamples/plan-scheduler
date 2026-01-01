@@ -617,3 +617,167 @@ class TestEndToEndPubSubFlow:
         assert payload.status == "running"
         assert payload.stage == "initialization"
         assert envelope.message.attributes["source"] == "execution-service"
+
+
+class TestUnifiedStatusWorkflowEdgeCases:
+    """Test edge cases for unified status workflow payloads."""
+
+    def test_payload_without_stage_field(self):
+        """Test that payloads without stage field are valid."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id,
+            spec_index=0,
+            status="running",
+            # No stage field
+        )
+
+        assert payload.plan_id == plan_id
+        assert payload.spec_index == 0
+        assert payload.status == "running"
+        assert payload.stage is None
+
+    def test_payload_without_details_field(self):
+        """Test that payloads without details field are valid."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id,
+            spec_index=0,
+            status="finished",
+            stage="completed",
+            # No details field
+        )
+
+        assert payload.plan_id == plan_id
+        assert payload.spec_index == 0
+        assert payload.status == "finished"
+        assert payload.stage == "completed"
+        assert payload.details is None
+
+    def test_payload_with_empty_string_stage(self):
+        """Test that empty string stage is accepted."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id, spec_index=0, status="running", stage=""  # Empty string
+        )
+
+        assert payload.stage == ""
+
+    def test_payload_with_none_stage(self):
+        """Test that None stage is accepted."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id, spec_index=0, status="running", stage=None  # Explicit None
+        )
+
+        assert payload.stage is None
+
+    def test_payload_defaults_for_optional_fields(self):
+        """Test that all optional fields default to None."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id,
+            spec_index=0,
+            status="running",
+            # No optional fields
+        )
+
+        assert payload.stage is None
+        assert payload.details is None
+        assert payload.correlation_id is None
+        assert payload.timestamp is None
+
+    def test_terminal_status_with_minimal_fields(self):
+        """Test terminal status (finished) with only required fields."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id,
+            spec_index=0,
+            status="finished",
+            # No stage, details, etc.
+        )
+
+        assert payload.status == "finished"
+        assert payload.stage is None
+        assert payload.details is None
+
+    def test_non_terminal_status_with_all_fields(self):
+        """Test non-terminal status with all optional fields populated."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id,
+            spec_index=5,
+            status="running",
+            stage="code_review",
+            details="Waiting for approval",
+            correlation_id="corr-123",
+            timestamp="2025-01-01T12:00:00Z",
+        )
+
+        assert payload.status == "running"
+        assert payload.stage == "code_review"
+        assert payload.details == "Waiting for approval"
+        assert payload.correlation_id == "corr-123"
+        assert payload.timestamp == "2025-01-01T12:00:00Z"
+
+    def test_uppercase_terminal_status_treated_as_informational(self):
+        """Test that uppercase terminal status values are accepted as informational."""
+        plan_id = str(uuid4())
+
+        # Uppercase "FINISHED" should be accepted (but won't trigger terminal transition)
+        payload1 = SpecStatusPayload(plan_id=plan_id, spec_index=0, status="FINISHED")
+        assert payload1.status == "FINISHED"
+
+        # Mixed case should also be accepted
+        payload2 = SpecStatusPayload(plan_id=plan_id, spec_index=0, status="Failed")
+        assert payload2.status == "Failed"
+
+        # All uppercase
+        payload3 = SpecStatusPayload(plan_id=plan_id, spec_index=0, status="FAILED")
+        assert payload3.status == "FAILED"
+
+    def test_custom_status_values_accepted(self):
+        """Test that custom/unknown status values are accepted."""
+        plan_id = str(uuid4())
+
+        custom_statuses = [
+            "pending_approval",
+            "IN_REVIEW",
+            "waiting_for_resource",
+            "CUSTOM_STATUS_123",
+            "paused",
+        ]
+
+        for custom_status in custom_statuses:
+            payload = SpecStatusPayload(plan_id=plan_id, spec_index=0, status=custom_status)
+            assert payload.status == custom_status
+
+    def test_payload_serialization_with_none_values(self):
+        """Test that payloads with None values serialize correctly."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id,
+            spec_index=0,
+            status="running",
+            stage=None,
+            details=None,
+            correlation_id=None,
+            timestamp=None,
+        )
+
+        data = payload.model_dump()
+        assert data["plan_id"] == plan_id
+        assert data["status"] == "running"
+        assert data["stage"] is None
+        assert data["details"] is None
+        assert data["correlation_id"] is None
+        assert data["timestamp"] is None
+
+    def test_large_spec_index_accepted(self):
+        """Test that large spec_index values are accepted."""
+        plan_id = str(uuid4())
+        large_indices = [100, 999, 10000]
+
+        for idx in large_indices:
+            payload = SpecStatusPayload(plan_id=plan_id, spec_index=idx, status="running")
+            assert payload.spec_index == idx

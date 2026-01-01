@@ -476,3 +476,333 @@ class TestSpecStatusEndpointExecutionTrigger:
         )
         # Should still return 204 even if execution trigger fails
         assert response.status_code == 204
+
+
+class TestUnifiedStatusWorkflow:
+    """Test unified status workflow with multiple non-terminal and terminal events."""
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.process_spec_status_update")
+    @patch("app.api.pubsub.get_client")
+    def test_multiple_non_terminal_updates_then_terminal(
+        self,
+        mock_get_client,
+        mock_process,
+        mock_get_settings,
+        client,
+    ):
+        """Test that multiple non-terminal updates are recorded before terminal event."""
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = "test-token"
+        mock_get_settings.return_value = mock_settings
+
+        plan_id = str(uuid.uuid4())
+
+        # Track calls to process_spec_status_update
+        call_results = []
+
+        def mock_process_side_effect(*args, **kwargs):
+            # Return different results based on call count
+            if len(call_results) < 3:
+                # Non-terminal updates
+                result = {
+                    "success": True,
+                    "action": "updated",
+                    "next_spec_triggered": False,
+                    "plan_finished": False,
+                    "message": "Non-terminal update",
+                }
+            else:
+                # Terminal update
+                result = {
+                    "success": True,
+                    "action": "updated",
+                    "next_spec_triggered": True,
+                    "plan_finished": False,
+                    "message": "Terminal update",
+                }
+            call_results.append(kwargs)
+            return result
+
+        mock_process.side_effect = mock_process_side_effect
+
+        # Mock next spec for execution trigger
+        mock_client = MagicMock()
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "spec_index": 1,
+            "status": "running",
+            "purpose": "Test",
+            "vision": "Test",
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-01T00:00:00Z",
+        }
+        mock_client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
+            mock_spec_snapshot
+        )
+        mock_get_client.return_value = mock_client
+
+        # Send 3 non-terminal updates
+        non_terminal_statuses = ["running", "running", "running"]
+        non_terminal_stages = ["initialization", "implementation", "testing"]
+
+        for idx, (status, stage) in enumerate(zip(non_terminal_statuses, non_terminal_stages)):
+            payload = {
+                "plan_id": plan_id,
+                "spec_index": 0,
+                "status": status,
+                "stage": stage,
+            }
+            encoded_data = base64.b64encode(json.dumps(payload).encode()).decode()
+            envelope = {
+                "message": {
+                    "data": encoded_data,
+                    "messageId": f"test-msg-{idx}",
+                    "publishTime": "2025-01-01T12:00:00Z",
+                }
+            }
+
+            response = client.post(
+                "/pubsub/spec-status",
+                json=envelope,
+                headers={"x-goog-pubsub-verification-token": "test-token"},
+            )
+            assert response.status_code == 204
+
+        # Send terminal update
+        terminal_payload = {
+            "plan_id": plan_id,
+            "spec_index": 0,
+            "status": "finished",
+            "stage": "completed",
+        }
+        encoded_data = base64.b64encode(json.dumps(terminal_payload).encode()).decode()
+        terminal_envelope = {
+            "message": {
+                "data": encoded_data,
+                "messageId": "test-msg-terminal",
+                "publishTime": "2025-01-01T12:00:00Z",
+            }
+        }
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=terminal_envelope,
+            headers={"x-goog-pubsub-verification-token": "test-token"},
+        )
+        assert response.status_code == 204
+
+        # Verify process_spec_status_update was called 4 times
+        assert len(call_results) == 4
+
+        # Verify non-terminal updates had correct status
+        for idx in range(3):
+            assert call_results[idx]["status"] == "running"
+            assert call_results[idx]["stage"] == non_terminal_stages[idx]
+
+        # Verify terminal update
+        assert call_results[3]["status"] == "finished"
+        assert call_results[3]["stage"] == "completed"
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.process_spec_status_update")
+    @patch("app.api.pubsub.get_client")
+    def test_duplicate_terminal_events_with_same_message_id(
+        self,
+        mock_get_client,
+        mock_process,
+        mock_get_settings,
+        client,
+    ):
+        """Test that duplicate terminal events with same message_id are idempotent."""
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = "test-token"
+        mock_get_settings.return_value = mock_settings
+
+        plan_id = str(uuid.uuid4())
+
+        # First call processes, second returns duplicate
+        call_count = [0]
+
+        def mock_process_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return {
+                    "success": True,
+                    "action": "updated",
+                    "next_spec_triggered": True,
+                    "plan_finished": False,
+                    "message": "Spec finished",
+                }
+            else:
+                return {
+                    "success": True,
+                    "action": "duplicate",
+                    "next_spec_triggered": False,
+                    "plan_finished": False,
+                    "message": "Duplicate message skipped",
+                }
+
+        mock_process.side_effect = mock_process_side_effect
+
+        # Mock next spec for first call
+        mock_client = MagicMock()
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "spec_index": 1,
+            "status": "running",
+            "purpose": "Test",
+            "vision": "Test",
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-01T00:00:00Z",
+        }
+        mock_client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
+            mock_spec_snapshot
+        )
+        mock_get_client.return_value = mock_client
+
+        # Send same terminal message twice
+        payload = {
+            "plan_id": plan_id,
+            "spec_index": 0,
+            "status": "finished",
+        }
+        encoded_data = base64.b64encode(json.dumps(payload).encode()).decode()
+        envelope = {
+            "message": {
+                "data": encoded_data,
+                "messageId": "duplicate-msg-123",  # Same message ID
+                "publishTime": "2025-01-01T12:00:00Z",
+            }
+        }
+
+        # First send
+        response1 = client.post(
+            "/pubsub/spec-status",
+            json=envelope,
+            headers={"x-goog-pubsub-verification-token": "test-token"},
+        )
+        assert response1.status_code == 204
+
+        # Second send (duplicate)
+        response2 = client.post(
+            "/pubsub/spec-status",
+            json=envelope,
+            headers={"x-goog-pubsub-verification-token": "test-token"},
+        )
+        assert response2.status_code == 204
+
+        # Verify process was called twice
+        assert call_count[0] == 2
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.process_spec_status_update")
+    @patch("app.api.pubsub.get_client")
+    def test_duplicate_terminal_events_with_correlation_id(
+        self,
+        mock_get_client,
+        mock_process,
+        mock_get_settings,
+        client,
+    ):
+        """Test that duplicate terminal events with same correlation_id are deduplicated."""
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = "test-token"
+        mock_get_settings.return_value = mock_settings
+
+        plan_id = str(uuid.uuid4())
+
+        # First call processes, second returns duplicate
+        call_count = [0]
+
+        def mock_process_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return {
+                    "success": True,
+                    "action": "updated",
+                    "next_spec_triggered": True,
+                    "plan_finished": False,
+                    "message": "Spec finished",
+                }
+            else:
+                return {
+                    "success": True,
+                    "action": "duplicate",
+                    "next_spec_triggered": False,
+                    "plan_finished": False,
+                    "message": "Duplicate correlation_id skipped",
+                }
+
+        mock_process.side_effect = mock_process_side_effect
+
+        # Mock next spec
+        mock_client = MagicMock()
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "spec_index": 1,
+            "status": "running",
+            "purpose": "Test",
+            "vision": "Test",
+            "created_at": "2025-01-01T00:00:00Z",
+            "updated_at": "2025-01-01T00:00:00Z",
+        }
+        mock_client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value = (
+            mock_spec_snapshot
+        )
+        mock_get_client.return_value = mock_client
+
+        # Send same terminal message twice with same correlation_id but different message_id
+        correlation_id = "correlation-123"
+
+        payload1 = {
+            "plan_id": plan_id,
+            "spec_index": 0,
+            "status": "finished",
+            "correlation_id": correlation_id,
+        }
+        encoded_data1 = base64.b64encode(json.dumps(payload1).encode()).decode()
+        envelope1 = {
+            "message": {
+                "data": encoded_data1,
+                "messageId": "msg-first-123",
+                "publishTime": "2025-01-01T12:00:00Z",
+            }
+        }
+
+        payload2 = {
+            "plan_id": plan_id,
+            "spec_index": 0,
+            "status": "finished",
+            "correlation_id": correlation_id,
+        }
+        encoded_data2 = base64.b64encode(json.dumps(payload2).encode()).decode()
+        envelope2 = {
+            "message": {
+                "data": encoded_data2,
+                "messageId": "msg-second-456",  # Different message ID
+                "publishTime": "2025-01-01T12:00:00Z",
+            }
+        }
+
+        # First send
+        response1 = client.post(
+            "/pubsub/spec-status",
+            json=envelope1,
+            headers={"x-goog-pubsub-verification-token": "test-token"},
+        )
+        assert response1.status_code == 204
+
+        # Second send (different message_id but same correlation_id - should be duplicate)
+        response2 = client.post(
+            "/pubsub/spec-status",
+            json=envelope2,
+            headers={"x-goog-pubsub-verification-token": "test-token"},
+        )
+        assert response2.status_code == 204
+
+        # Verify process was called twice
+        assert call_count[0] == 2

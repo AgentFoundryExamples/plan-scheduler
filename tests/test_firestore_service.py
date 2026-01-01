@@ -2426,3 +2426,400 @@ def test_get_plan_with_specs_logs_successful_fetch(mock_firestore_client, caplog
     info_messages = [record.message for record in caplog.records if record.levelname == "INFO"]
     assert any("Fetched plan" in msg and plan_id in msg for msg in info_messages)
     assert any("2 specs" in msg for msg in info_messages)
+
+
+class TestUnifiedStatusWorkflowFirestoreService:
+    """Test unified status workflow features in Firestore service."""
+
+    def test_process_spec_status_update_history_bounded_growth(self):
+        """Test that history array grows but doesn't exceed reasonable bounds."""
+        from app.services.firestore_service import process_spec_status_update
+
+        plan_id = "test-plan-id"
+        spec_index = 0
+
+        # Mock plan and spec with existing large history
+        mock_client = MagicMock()
+        mock_transaction = MagicMock()
+        mock_client.transaction.return_value = mock_transaction
+
+        # Create a history with many entries
+        existing_history = [
+            {
+                "timestamp": f"2025-01-01T{i:02d}:00:00Z",
+                "received_status": "running",
+                "stage": f"stage-{i}",
+                "message_id": f"msg-{i}",
+                "raw_snippet": {},
+            }
+            for i in range(50)  # 50 existing entries
+        ]
+
+        mock_plan_snapshot = MagicMock()
+        mock_plan_snapshot.exists = True
+        mock_plan_snapshot.to_dict.return_value = {
+            "overall_status": "running",
+            "total_specs": 1,
+            "completed_specs": 0,
+            "current_spec_index": 0,
+        }
+
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "status": "running",
+            "history": existing_history.copy(),
+        }
+
+        mock_plan_ref = MagicMock()
+        mock_spec_ref = MagicMock()
+        mock_plan_ref.get.return_value = mock_plan_snapshot
+        mock_spec_ref.get.return_value = mock_spec_snapshot
+        mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+        mock_client.collection.return_value.document.return_value = mock_plan_ref
+
+        # Process one more update
+        result = process_spec_status_update(
+            plan_id=plan_id,
+            spec_index=spec_index,
+            status="running",
+            stage="stage-new",
+            message_id="msg-new",
+            raw_payload_snippet={"test": "data"},
+            client=mock_client,
+        )
+
+        assert result["success"] is True
+
+        # Verify history was appended
+        transaction = mock_client.transaction.return_value
+        update_calls = list(transaction.update.call_args_list)
+        spec_update_call = update_calls[0]
+        spec_updates = spec_update_call[0][1]
+
+        # New history should have one more entry
+        assert len(spec_updates["history"]) == 51
+        assert spec_updates["history"][-1]["stage"] == "stage-new"
+
+    def test_process_spec_status_update_deduplication_keys_stored(self):
+        """Test that message_id and correlation_id are stored for deduplication."""
+        from app.services.firestore_service import process_spec_status_update
+
+        plan_id = "test-plan-id"
+        spec_index = 0
+        message_id = "unique-msg-123"
+        correlation_id = "unique-corr-456"
+
+        mock_client = MagicMock()
+        mock_transaction = MagicMock()
+        mock_client.transaction.return_value = mock_transaction
+
+        mock_plan_snapshot = MagicMock()
+        mock_plan_snapshot.exists = True
+        mock_plan_snapshot.to_dict.return_value = {
+            "overall_status": "running",
+            "total_specs": 1,
+            "completed_specs": 0,
+            "current_spec_index": 0,
+        }
+
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "status": "running",
+            "history": [],
+        }
+
+        mock_plan_ref = MagicMock()
+        mock_spec_ref = MagicMock()
+        mock_plan_ref.get.return_value = mock_plan_snapshot
+        mock_spec_ref.get.return_value = mock_spec_snapshot
+        mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+        mock_client.collection.return_value.document.return_value = mock_plan_ref
+
+        result = process_spec_status_update(
+            plan_id=plan_id,
+            spec_index=spec_index,
+            status="running",
+            stage="testing",
+            message_id=message_id,
+            correlation_id=correlation_id,
+            raw_payload_snippet={"test": "data"},
+            client=mock_client,
+        )
+
+        assert result["success"] is True
+
+        # Verify deduplication keys were stored in history
+        transaction = mock_client.transaction.return_value
+        update_calls = list(transaction.update.call_args_list)
+        spec_update_call = update_calls[0]
+        spec_updates = spec_update_call[0][1]
+
+        history_entry = spec_updates["history"][0]
+        assert history_entry["message_id"] == message_id
+        assert history_entry["correlation_id"] == correlation_id
+
+    def test_process_spec_status_update_correlation_id_precedence(self):
+        """Test that correlation_id takes precedence over message_id for deduplication."""
+        from app.services.firestore_service import process_spec_status_update
+
+        plan_id = "test-plan-id"
+        spec_index = 0
+
+        mock_client = MagicMock()
+        mock_transaction = MagicMock()
+        mock_client.transaction.return_value = mock_transaction
+
+        # History has entry with correlation_id but different message_id
+        existing_history = [
+            {
+                "timestamp": "2025-01-01T10:00:00Z",
+                "received_status": "running",
+                "stage": "init",
+                "message_id": "msg-old",
+                "correlation_id": "corr-123",
+                "raw_snippet": {},
+            }
+        ]
+
+        mock_plan_snapshot = MagicMock()
+        mock_plan_snapshot.exists = True
+        mock_plan_snapshot.to_dict.return_value = {
+            "overall_status": "running",
+            "total_specs": 1,
+            "completed_specs": 0,
+            "current_spec_index": 0,
+        }
+
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "status": "running",
+            "history": existing_history.copy(),
+        }
+
+        mock_plan_ref = MagicMock()
+        mock_spec_ref = MagicMock()
+        mock_plan_ref.get.return_value = mock_plan_snapshot
+        mock_spec_ref.get.return_value = mock_spec_snapshot
+        mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+        mock_client.collection.return_value.document.return_value = mock_plan_ref
+
+        # Try to add entry with same correlation_id but different message_id
+        result = process_spec_status_update(
+            plan_id=plan_id,
+            spec_index=spec_index,
+            status="running",
+            stage="testing",
+            message_id="msg-new",  # Different message_id
+            correlation_id="corr-123",  # Same correlation_id
+            raw_payload_snippet={"test": "data"},
+            client=mock_client,
+        )
+
+        # Should be detected as duplicate based on correlation_id
+        assert result["success"] is True
+        assert result["action"] == "duplicate"
+        assert "correlation_id" in result["message"]
+
+        # Verify no updates were made
+        transaction = mock_client.transaction.return_value
+        transaction.update.assert_not_called()
+
+    def test_process_spec_status_update_message_id_fallback_deduplication(self):
+        """Test that message_id is used for deduplication when correlation_id not provided."""
+        from app.services.firestore_service import process_spec_status_update
+
+        plan_id = "test-plan-id"
+        spec_index = 0
+
+        mock_client = MagicMock()
+        mock_transaction = MagicMock()
+        mock_client.transaction.return_value = mock_transaction
+
+        # History has entry with message_id but no correlation_id
+        existing_history = [
+            {
+                "timestamp": "2025-01-01T10:00:00Z",
+                "received_status": "running",
+                "stage": "init",
+                "message_id": "msg-duplicate",
+                "correlation_id": None,
+                "raw_snippet": {},
+            }
+        ]
+
+        mock_plan_snapshot = MagicMock()
+        mock_plan_snapshot.exists = True
+        mock_plan_snapshot.to_dict.return_value = {
+            "overall_status": "running",
+            "total_specs": 1,
+            "completed_specs": 0,
+            "current_spec_index": 0,
+        }
+
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "status": "running",
+            "history": existing_history.copy(),
+        }
+
+        mock_plan_ref = MagicMock()
+        mock_spec_ref = MagicMock()
+        mock_plan_ref.get.return_value = mock_plan_snapshot
+        mock_spec_ref.get.return_value = mock_spec_snapshot
+        mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+        mock_client.collection.return_value.document.return_value = mock_plan_ref
+
+        # Try to add entry with same message_id and no correlation_id
+        result = process_spec_status_update(
+            plan_id=plan_id,
+            spec_index=spec_index,
+            status="running",
+            stage="testing",
+            message_id="msg-duplicate",  # Same message_id
+            correlation_id=None,  # No correlation_id
+            raw_payload_snippet={"test": "data"},
+            client=mock_client,
+        )
+
+        # Should be detected as duplicate based on message_id
+        assert result["success"] is True
+        assert result["action"] == "duplicate"
+        assert "message" in result["message"].lower()
+
+        # Verify no updates were made
+        transaction = mock_client.transaction.return_value
+        transaction.update.assert_not_called()
+
+    def test_process_spec_status_update_different_correlation_ids_not_duplicate(self):
+        """Test that different correlation_ids allow separate events."""
+        from app.services.firestore_service import process_spec_status_update
+
+        plan_id = "test-plan-id"
+        spec_index = 0
+
+        mock_client = MagicMock()
+        mock_transaction = MagicMock()
+        mock_client.transaction.return_value = mock_transaction
+
+        # History has entry with one correlation_id
+        existing_history = [
+            {
+                "timestamp": "2025-01-01T10:00:00Z",
+                "received_status": "running",
+                "stage": "init",
+                "message_id": "msg-1",
+                "correlation_id": "corr-first",
+                "raw_snippet": {},
+            }
+        ]
+
+        mock_plan_snapshot = MagicMock()
+        mock_plan_snapshot.exists = True
+        mock_plan_snapshot.to_dict.return_value = {
+            "overall_status": "running",
+            "total_specs": 1,
+            "completed_specs": 0,
+            "current_spec_index": 0,
+        }
+
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "status": "running",
+            "history": existing_history.copy(),
+        }
+
+        mock_plan_ref = MagicMock()
+        mock_spec_ref = MagicMock()
+        mock_plan_ref.get.return_value = mock_plan_snapshot
+        mock_spec_ref.get.return_value = mock_spec_snapshot
+        mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+        mock_client.collection.return_value.document.return_value = mock_plan_ref
+
+        # Add entry with different correlation_id
+        result = process_spec_status_update(
+            plan_id=plan_id,
+            spec_index=spec_index,
+            status="running",
+            stage="testing",
+            message_id="msg-2",
+            correlation_id="corr-second",  # Different correlation_id
+            raw_payload_snippet={"test": "data"},
+            client=mock_client,
+        )
+
+        # Should NOT be duplicate
+        assert result["success"] is True
+        assert result["action"] == "updated"
+
+        # Verify updates were made
+        transaction = mock_client.transaction.return_value
+        update_calls = list(transaction.update.call_args_list)
+        assert len(update_calls) == 2  # spec update + plan update
+
+    def test_process_spec_status_update_raw_snippet_stored_in_history(self):
+        """Test that raw_payload_snippet is stored in history for debugging."""
+        from app.services.firestore_service import process_spec_status_update
+
+        plan_id = "test-plan-id"
+        spec_index = 0
+        raw_snippet = {
+            "plan_id": plan_id,
+            "spec_index": spec_index,
+            "status": "running",
+            "stage": "testing",
+            "extra_field": "extra_value",
+        }
+
+        mock_client = MagicMock()
+        mock_transaction = MagicMock()
+        mock_client.transaction.return_value = mock_transaction
+
+        mock_plan_snapshot = MagicMock()
+        mock_plan_snapshot.exists = True
+        mock_plan_snapshot.to_dict.return_value = {
+            "overall_status": "running",
+            "total_specs": 1,
+            "completed_specs": 0,
+            "current_spec_index": 0,
+        }
+
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "status": "running",
+            "history": [],
+        }
+
+        mock_plan_ref = MagicMock()
+        mock_spec_ref = MagicMock()
+        mock_plan_ref.get.return_value = mock_plan_snapshot
+        mock_spec_ref.get.return_value = mock_spec_snapshot
+        mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+        mock_client.collection.return_value.document.return_value = mock_plan_ref
+
+        result = process_spec_status_update(
+            plan_id=plan_id,
+            spec_index=spec_index,
+            status="running",
+            stage="testing",
+            message_id="msg-123",
+            raw_payload_snippet=raw_snippet,
+            client=mock_client,
+        )
+
+        assert result["success"] is True
+
+        # Verify raw_snippet was stored
+        transaction = mock_client.transaction.return_value
+        update_calls = list(transaction.update.call_args_list)
+        spec_update_call = update_calls[0]
+        spec_updates = spec_update_call[0][1]
+
+        history_entry = spec_updates["history"][0]
+        assert history_entry["raw_snippet"] == raw_snippet
+        assert history_entry["raw_snippet"]["extra_field"] == "extra_value"
