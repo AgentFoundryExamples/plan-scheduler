@@ -128,6 +128,7 @@
         "stdlib": [
           "datetime.UTC",
           "datetime.datetime",
+          "enum.Enum",
           "typing.Any",
           "uuid.UUID"
         ],

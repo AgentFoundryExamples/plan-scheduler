@@ -92,8 +92,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for plan  
-**Size:** 10.28 KB  
-**LOC:** 232  
+**Size:** 15.19 KB  
+**LOC:** 349  
 **TODOs/FIXMEs:** 0  
 
 ## app/models/pubsub.py
@@ -209,8 +209,8 @@ Total files: 27
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 31.48 KB  
-**LOC:** 731  
+**Size:** 48.41 KB  
+**LOC:** 1183  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_plans_api.py
