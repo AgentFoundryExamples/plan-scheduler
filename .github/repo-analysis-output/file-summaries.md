@@ -182,8 +182,8 @@ Total files: 28
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 84.79 KB  
-**LOC:** 1679  
+**Size:** 99.03 KB  
+**LOC:** 1994  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_health.py
@@ -218,8 +218,8 @@ Total files: 28
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 43.06 KB  
-**LOC:** 969  
+**Size:** 52.94 KB  
+**LOC:** 1195  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_pubsub_api.py
@@ -227,8 +227,8 @@ Total files: 28
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 15.85 KB  
-**LOC:** 388  
+**Size:** 27.47 KB  
+**LOC:** 658  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_pubsub_models.py
@@ -236,8 +236,8 @@ Total files: 28
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 23.41 KB  
-**LOC:** 462  
+**Size:** 28.71 KB  
+**LOC:** 587  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_spec_status_update.py
