@@ -112,44 +112,73 @@ def test_missing_env_vars_emit_warnings(caplog):
             assert any("GOOGLE_APPLICATION_CREDENTIALS" in msg for msg in warning_messages)
 
 
-def test_missing_pubsub_token_raises_error():
-    """Test that missing PUBSUB_VERIFICATION_TOKEN raises ValueError on startup."""
-    with patch.dict(os.environ, {}, clear=True):
+def test_missing_pubsub_token_with_oidc_disabled_raises_error():
+    """Test that missing PUBSUB_VERIFICATION_TOKEN raises ValueError when OIDC is disabled."""
+    with patch.dict(os.environ, {"PUBSUB_OIDC_ENABLED": "false"}, clear=True):
         with pytest.raises(ValueError, match="PUBSUB_VERIFICATION_TOKEN is required"):
             Settings()
 
 
-def test_empty_pubsub_token_raises_error():
-    """Test that empty PUBSUB_VERIFICATION_TOKEN raises ValueError on startup."""
-    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": ""}, clear=True):
+def test_empty_pubsub_token_with_oidc_disabled_raises_error():
+    """Test that empty PUBSUB_VERIFICATION_TOKEN raises ValueError when OIDC is disabled."""
+    with patch.dict(
+        os.environ, {"PUBSUB_VERIFICATION_TOKEN": "", "PUBSUB_OIDC_ENABLED": "false"}, clear=True
+    ):
         with pytest.raises(ValueError, match="PUBSUB_VERIFICATION_TOKEN is required"):
             Settings()
 
 
-def test_whitespace_only_pubsub_token_raises_error():
-    """Test that whitespace-only PUBSUB_VERIFICATION_TOKEN raises ValueError."""
-    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": "   "}, clear=True):
+def test_whitespace_only_pubsub_token_with_oidc_disabled_raises_error():
+    """Test that whitespace-only PUBSUB_VERIFICATION_TOKEN raises ValueError when OIDC disabled."""
+    with patch.dict(
+        os.environ,
+        {"PUBSUB_VERIFICATION_TOKEN": "   ", "PUBSUB_OIDC_ENABLED": "false"},
+        clear=True,
+    ):
         with pytest.raises(ValueError, match="PUBSUB_VERIFICATION_TOKEN is required"):
             Settings()
+
+
+def test_missing_pubsub_token_with_oidc_enabled_succeeds():
+    """Test that missing PUBSUB_VERIFICATION_TOKEN succeeds when OIDC is enabled."""
+    with patch.dict(
+        os.environ,
+        {"PUBSUB_OIDC_ENABLED": "true", "PUBSUB_EXPECTED_AUDIENCE": "https://example.com"},
+        clear=True,
+    ):
+        settings = Settings()
+        assert settings.PUBSUB_VERIFICATION_TOKEN == ""
 
 
 def test_valid_pubsub_token_accepted():
     """Test that valid PUBSUB_VERIFICATION_TOKEN is accepted."""
-    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": "valid-token-123"}, clear=True):
+    with patch.dict(
+        os.environ,
+        {"PUBSUB_VERIFICATION_TOKEN": "valid-token-123", "PUBSUB_OIDC_ENABLED": "false"},
+        clear=True,
+    ):
         settings = Settings()
         assert settings.PUBSUB_VERIFICATION_TOKEN == "valid-token-123"
 
 
 def test_settings_singleton_returns_instance():
     """Test that get_settings returns a Settings instance."""
-    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True):
+    with patch.dict(
+        os.environ,
+        {"PUBSUB_VERIFICATION_TOKEN": "test-token", "PUBSUB_OIDC_ENABLED": "false"},
+        clear=True,
+    ):
         settings = get_settings()
         assert isinstance(settings, Settings)
 
 
 def test_port_validation_handles_none():
     """Test that PORT validation handles None value."""
-    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True):
+    with patch.dict(
+        os.environ,
+        {"PUBSUB_VERIFICATION_TOKEN": "test-token", "PUBSUB_OIDC_ENABLED": "false"},
+        clear=True,
+    ):
         settings = Settings()
         assert settings.PORT == 8080
 
@@ -215,25 +244,24 @@ def test_execution_enabled_can_be_enabled():
         assert settings.EXECUTION_ENABLED is True
 
 
-def test_pubsub_jwt_verification_defaults_to_false():
-    """Test that PUBSUB_JWT_VERIFICATION_ENABLED defaults to False."""
-    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True):
+def test_oidc_enabled_defaults_to_true():
+    """Test that PUBSUB_OIDC_ENABLED defaults to True."""
+    with patch.dict(
+        os.environ, {"PUBSUB_EXPECTED_AUDIENCE": "https://example.com"}, clear=True
+    ):
         settings = Settings()
-        assert settings.PUBSUB_JWT_VERIFICATION_ENABLED is False
+        assert settings.PUBSUB_OIDC_ENABLED is True
 
 
-def test_pubsub_jwt_verification_can_be_enabled():
-    """Test that PUBSUB_JWT_VERIFICATION_ENABLED can be set to True."""
+def test_oidc_can_be_disabled():
+    """Test that PUBSUB_OIDC_ENABLED can be set to False."""
     with patch.dict(
         os.environ,
-        {
-            "PUBSUB_VERIFICATION_TOKEN": "test-token",
-            "PUBSUB_JWT_VERIFICATION_ENABLED": "true",
-        },
+        {"PUBSUB_OIDC_ENABLED": "false", "PUBSUB_VERIFICATION_TOKEN": "test-token"},
         clear=True,
     ):
         settings = Settings()
-        assert settings.PUBSUB_JWT_VERIFICATION_ENABLED is True
+        assert settings.PUBSUB_OIDC_ENABLED is False
 
 
 def test_default_log_level_is_info():
