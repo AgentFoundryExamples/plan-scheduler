@@ -675,8 +675,8 @@ def test_get_plan_status_success(client):
     ]
 
     with (
-        patch("app.services.firestore_service.get_plan_with_specs") as mock_get_plan,
-        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
     ):
         mock_get_plan.return_value = (plan_data, spec_data_list)
         mock_client.return_value = MagicMock()
@@ -705,8 +705,8 @@ def test_get_plan_status_not_found(client):
     plan_id = str(uuid.uuid4())
 
     with (
-        patch("app.services.firestore_service.get_plan_with_specs") as mock_get_plan,
-        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
     ):
         mock_get_plan.return_value = (None, [])
         mock_client.return_value = MagicMock()
@@ -756,8 +756,8 @@ def test_get_plan_status_with_include_stage_false(client):
     ]
 
     with (
-        patch("app.services.firestore_service.get_plan_with_specs") as mock_get_plan,
-        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
     ):
         mock_get_plan.return_value = (plan_data, spec_data_list)
         mock_client.return_value = MagicMock()
@@ -809,8 +809,8 @@ def test_get_plan_status_with_include_stage_default_true(client):
     ]
 
     with (
-        patch("app.services.firestore_service.get_plan_with_specs") as mock_get_plan,
-        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
     ):
         mock_get_plan.return_value = (plan_data, spec_data_list)
         mock_client.return_value = MagicMock()
@@ -842,8 +842,8 @@ def test_get_plan_status_with_zero_specs(client):
     }
 
     with (
-        patch("app.services.firestore_service.get_plan_with_specs") as mock_get_plan,
-        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
     ):
         mock_get_plan.return_value = (plan_data, [])
         mock_client.return_value = MagicMock()
@@ -868,8 +868,8 @@ def test_get_plan_status_firestore_error_returns_500(client):
     plan_id = str(uuid.uuid4())
 
     with (
-        patch("app.services.firestore_service.get_plan_with_specs") as mock_get_plan,
-        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
     ):
         mock_get_plan.side_effect = FirestoreOperationError("Firestore error")
         mock_client.return_value = MagicMock()
@@ -888,8 +888,8 @@ def test_get_plan_status_unexpected_error_returns_500(client):
     plan_id = str(uuid.uuid4())
 
     with (
-        patch("app.services.firestore_service.get_plan_with_specs") as mock_get_plan,
-        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
     ):
         mock_get_plan.side_effect = Exception("Unexpected error")
         mock_client.return_value = MagicMock()
@@ -938,8 +938,8 @@ def test_get_plan_status_logs_retrieval_attempt(client, caplog):
     }
 
     with (
-        patch("app.services.firestore_service.get_plan_with_specs") as mock_get_plan,
-        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
     ):
         mock_get_plan.return_value = (plan_data, [])
         mock_client.return_value = MagicMock()
@@ -960,8 +960,8 @@ def test_get_plan_status_logs_not_found(client, caplog):
     plan_id = str(uuid.uuid4())
 
     with (
-        patch("app.services.firestore_service.get_plan_with_specs") as mock_get_plan,
-        patch("app.dependencies.get_firestore_client") as mock_client,
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
     ):
         mock_get_plan.return_value = (None, [])
         mock_client.return_value = MagicMock()

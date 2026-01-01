@@ -17,11 +17,13 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
+from app.dependencies import get_firestore_client
 from app.models.plan import PlanCreateResponse, PlanIn, PlanRecord, PlanStatusOut, SpecRecord
 from app.services.firestore_service import (
     FirestoreOperationError,
     PlanConflictError,
     PlanIngestionOutcome,
+    get_plan_with_specs,
 )
 
 logger = logging.getLogger(__name__)
@@ -218,10 +220,6 @@ async def get_plan_status(
     Raises:
         HTTPException: 404 if plan not found, 500 for server errors
     """
-    # Import here to avoid circular import at module load time
-    from app.dependencies import get_firestore_client
-    from app.services.firestore_service import get_plan_with_specs
-
     try:
         # Log retrieval attempt
         logger.info(
@@ -252,13 +250,7 @@ async def get_plan_status(
         spec_records = [SpecRecord(**spec_data) for spec_data in spec_list]
 
         # Use the helper method to construct PlanStatusOut
-        plan_status = PlanStatusOut.from_records(plan_record, spec_records)
-
-        # Handle include_stage parameter
-        if not include_stage:
-            # Remove stage field from all spec statuses
-            for spec_status in plan_status.specs:
-                spec_status.stage = None
+        plan_status = PlanStatusOut.from_records(plan_record, spec_records, include_stage)
 
         logger.info(
             "Plan status retrieved successfully",

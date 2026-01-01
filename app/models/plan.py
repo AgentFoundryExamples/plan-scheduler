@@ -183,6 +183,7 @@ class PlanStatusOut(BaseModel):
         cls,
         plan_record: "PlanRecord",
         spec_records: list["SpecRecord"],
+        include_stage: bool = True,
     ) -> "PlanStatusOut":
         """
         Helper to construct PlanStatusOut from PlanRecord and SpecRecords.
@@ -193,6 +194,7 @@ class PlanStatusOut(BaseModel):
         Args:
             plan_record: The plan record from Firestore
             spec_records: List of spec records from Firestore (should be sorted by spec_index)
+            include_stage: Whether to include stage field in spec statuses (default: True)
 
         Returns:
             PlanStatusOut with all fields populated correctly
@@ -202,7 +204,7 @@ class PlanStatusOut(BaseModel):
             SpecStatusOut(
                 spec_index=spec.spec_index,
                 status=spec.status,
-                stage=getattr(spec, "current_stage", None),
+                stage=getattr(spec, "current_stage", None) if include_stage else None,
                 updated_at=spec.updated_at,
             )
             for spec in spec_records

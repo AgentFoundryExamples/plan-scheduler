@@ -914,9 +914,6 @@ def get_plan_with_specs(
 
         return plan_data, spec_list
 
-    except FirestoreOperationError:
-        # Re-raise our custom errors
-        raise
     except gcp_exceptions.GoogleAPICallError as e:
         error_msg = f"Firestore API error fetching plan {plan_id}: {str(e)}"
         logger.error(error_msg)
