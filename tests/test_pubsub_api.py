@@ -811,3 +811,303 @@ class TestUnifiedStatusWorkflow:
 
         # Verify process was called twice
         assert call_count[0] == 2
+
+
+class TestOIDCAuthentication:
+    """Test OIDC JWT authentication for Pub/Sub endpoints."""
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.validate_oidc_token")
+    @patch("app.api.pubsub.process_spec_status_update")
+    @patch("app.api.pubsub.get_client")
+    def test_valid_oidc_token_succeeds(
+        self,
+        mock_get_client,
+        mock_process,
+        mock_validate_oidc,
+        mock_get_settings,
+        client,
+        valid_pubsub_envelope,
+    ):
+        """Test that valid OIDC token allows request."""
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = True
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = "https://example.com"
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = ""
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = ""
+        mock_get_settings.return_value = mock_settings
+
+        mock_validate_oidc.return_value = {
+            "aud": "https://example.com",
+            "iss": "https://accounts.google.com",
+            "sub": "test@example.com",
+        }
+
+        mock_process.return_value = {
+            "success": True,
+            "action": "updated",
+            "next_spec_triggered": False,
+            "plan_finished": False,
+            "message": "Success",
+        }
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=valid_pubsub_envelope,
+            headers={"Authorization": "Bearer fake-jwt-token"},
+        )
+
+        assert response.status_code == 204
+        mock_validate_oidc.assert_called_once()
+
+    @patch("app.api.pubsub.get_settings")
+    def test_missing_authorization_header_returns_401(
+        self, mock_get_settings, client, valid_pubsub_envelope
+    ):
+        """Test that missing Authorization header returns 401 when OIDC is enabled."""
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = True
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = "https://example.com"
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = ""
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = ""
+        mock_get_settings.return_value = mock_settings
+
+        response = client.post("/pubsub/spec-status", json=valid_pubsub_envelope)
+
+        assert response.status_code == 401
+        assert "detail" in response.json()
+
+    @patch("app.api.pubsub.get_settings")
+    def test_malformed_authorization_header_returns_401(
+        self, mock_get_settings, client, valid_pubsub_envelope
+    ):
+        """Test that malformed Authorization header returns 401."""
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = True
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = "https://example.com"
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = ""
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = ""
+        mock_get_settings.return_value = mock_settings
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=valid_pubsub_envelope,
+            headers={"Authorization": "InvalidFormat token"},
+        )
+
+        assert response.status_code == 401
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.validate_oidc_token")
+    def test_expired_token_returns_401(
+        self, mock_validate_oidc, mock_get_settings, client, valid_pubsub_envelope
+    ):
+        """Test that expired JWT token returns 401."""
+        from app.auth import OIDCValidationError
+
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = True
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = "https://example.com"
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = ""
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = ""
+        mock_get_settings.return_value = mock_settings
+
+        mock_validate_oidc.side_effect = OIDCValidationError("Token expired")
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=valid_pubsub_envelope,
+            headers={"Authorization": "Bearer expired-token"},
+        )
+
+        assert response.status_code == 401
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.validate_oidc_token")
+    def test_wrong_audience_returns_401(
+        self, mock_validate_oidc, mock_get_settings, client, valid_pubsub_envelope
+    ):
+        """Test that token with wrong audience returns 401."""
+        from app.auth import OIDCValidationError
+
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = True
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = "https://example.com"
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = ""
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = ""
+        mock_get_settings.return_value = mock_settings
+
+        mock_validate_oidc.side_effect = OIDCValidationError(
+            "Audience mismatch: expected https://example.com, got https://wrong.com"
+        )
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=valid_pubsub_envelope,
+            headers={"Authorization": "Bearer wrong-audience-token"},
+        )
+
+        assert response.status_code == 401
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.validate_oidc_token")
+    @patch("app.api.pubsub.process_spec_status_update")
+    @patch("app.api.pubsub.get_client")
+    def test_oidc_failure_falls_back_to_shared_token(
+        self,
+        mock_get_client,
+        mock_process,
+        mock_validate_oidc,
+        mock_get_settings,
+        client,
+        valid_pubsub_envelope,
+    ):
+        """Test that OIDC validation failure falls back to shared token."""
+        from app.auth import OIDCValidationError
+
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = True
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = "https://example.com"
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = ""
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = "fallback-token"
+        mock_get_settings.return_value = mock_settings
+
+        mock_validate_oidc.side_effect = OIDCValidationError("Invalid token")
+
+        mock_process.return_value = {
+            "success": True,
+            "action": "updated",
+            "next_spec_triggered": False,
+            "plan_finished": False,
+            "message": "Success",
+        }
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=valid_pubsub_envelope,
+            headers={
+                "Authorization": "Bearer bad-token",
+                "x-goog-pubsub-verification-token": "fallback-token",
+            },
+        )
+
+        assert response.status_code == 204
+
+    @patch("app.api.pubsub.get_settings")
+    def test_oidc_disabled_requires_shared_token(
+        self, mock_get_settings, client, valid_pubsub_envelope
+    ):
+        """Test that when OIDC is disabled, shared token is required."""
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = False
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = ""
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = ""
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = "required-token"
+        mock_get_settings.return_value = mock_settings
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=valid_pubsub_envelope,
+            headers={"Authorization": "Bearer ignored-token"},
+        )
+
+        assert response.status_code == 401
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.process_spec_status_update")
+    @patch("app.api.pubsub.get_client")
+    def test_oidc_disabled_with_valid_shared_token_succeeds(
+        self,
+        mock_get_client,
+        mock_process,
+        mock_get_settings,
+        client,
+        valid_pubsub_envelope,
+    ):
+        """Test that when OIDC is disabled, valid shared token works."""
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = False
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = ""
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = ""
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = "required-token"
+        mock_get_settings.return_value = mock_settings
+
+        mock_process.return_value = {
+            "success": True,
+            "action": "updated",
+            "next_spec_triggered": False,
+            "plan_finished": False,
+            "message": "Success",
+        }
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=valid_pubsub_envelope,
+            headers={"x-goog-pubsub-verification-token": "required-token"},
+        )
+
+        assert response.status_code == 204
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.validate_oidc_token")
+    def test_invalid_issuer_returns_401(
+        self, mock_validate_oidc, mock_get_settings, client, valid_pubsub_envelope
+    ):
+        """Test that token with invalid issuer returns 401."""
+        from app.auth import OIDCValidationError
+
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = True
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = "https://example.com"
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = ""
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = ""
+        mock_get_settings.return_value = mock_settings
+
+        mock_validate_oidc.side_effect = OIDCValidationError(
+            "Issuer mismatch: expected https://accounts.google.com, got https://evil.com"
+        )
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=valid_pubsub_envelope,
+            headers={"Authorization": "Bearer wrong-issuer-token"},
+        )
+
+        assert response.status_code == 401
+
+    @patch("app.api.pubsub.get_settings")
+    @patch("app.api.pubsub.validate_oidc_token")
+    def test_wrong_service_account_returns_401(
+        self, mock_validate_oidc, mock_get_settings, client, valid_pubsub_envelope
+    ):
+        """Test that token with wrong service account returns 401."""
+        from app.auth import OIDCValidationError
+
+        mock_settings = MagicMock()
+        mock_settings.PUBSUB_OIDC_ENABLED = True
+        mock_settings.PUBSUB_EXPECTED_AUDIENCE = "https://example.com"
+        mock_settings.PUBSUB_EXPECTED_ISSUER = "https://accounts.google.com"
+        mock_settings.PUBSUB_SERVICE_ACCOUNT_EMAIL = "expected@example.com"
+        mock_settings.PUBSUB_VERIFICATION_TOKEN = ""
+        mock_get_settings.return_value = mock_settings
+
+        mock_validate_oidc.side_effect = OIDCValidationError(
+            "Service account mismatch: expected expected@example.com"
+        )
+
+        response = client.post(
+            "/pubsub/spec-status",
+            json=valid_pubsub_envelope,
+            headers={"Authorization": "Bearer wrong-sa-token"},
+        )
+
+        assert response.status_code == 401

@@ -19,6 +19,7 @@ import secrets
 from fastapi import APIRouter, Header, HTTPException, Response, status
 from pydantic import ValidationError
 
+from app.auth import OIDCValidationError, validate_oidc_token
 from app.config import get_settings
 from app.models.pubsub import PubSubPushEnvelope, SpecStatusPayload, decode_pubsub_message
 from app.services.execution_service import ExecutionService
@@ -41,9 +42,11 @@ router = APIRouter(prefix="/pubsub", tags=["pubsub"])
             "description": "Status update processed successfully",
         },
         401: {
-            "description": "Unauthorized - invalid verification token",
+            "description": "Unauthorized - invalid authentication",
             "content": {
-                "application/json": {"example": {"detail": "Invalid or missing verification token"}}
+                "application/json": {
+                    "example": {"detail": "Invalid or missing authentication"}
+                }
             },
         },
         400: {
@@ -59,6 +62,7 @@ router = APIRouter(prefix="/pubsub", tags=["pubsub"])
 async def spec_status_update(
     envelope: PubSubPushEnvelope,
     response: Response,
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_goog_pubsub_verification_token: str | None = Header(
         default=None, alias="x-goog-pubsub-verification-token"
     ),
@@ -67,7 +71,7 @@ async def spec_status_update(
     Receive and process Pub/Sub push notifications for spec status updates.
 
     This endpoint:
-    1. Verifies the Pub/Sub verification token from the header
+    1. Verifies authentication (OIDC JWT or shared token)
     2. Decodes the base64-encoded message payload
     3. Validates the payload against SpecStatusPayload schema
     4. Processes the status update transactionally in Firestore
@@ -75,9 +79,13 @@ async def spec_status_update(
     6. Returns 204 No Content quickly
 
     Security:
-    - Requires PUBSUB_VERIFICATION_TOKEN to be set in environment
-    - Verifies token from x-goog-pubsub-verification-token header
-    - Returns 401 if token is missing or invalid
+    - Primary: OIDC JWT validation when PUBSUB_OIDC_ENABLED is True
+      - Validates Authorization header contains valid Google-signed JWT
+      - Verifies audience, issuer, and optionally service account email
+    - Fallback: Shared token verification when OIDC is disabled or fails
+      - Requires PUBSUB_VERIFICATION_TOKEN to be set in environment
+      - Verifies token from x-goog-pubsub-verification-token header
+    - Returns 401 if neither authentication method succeeds
 
     Idempotency:
     - Detects duplicate messages via messageId in history
@@ -86,6 +94,7 @@ async def spec_status_update(
     Args:
         envelope: Pub/Sub push envelope containing message and metadata
         response: FastAPI response object
+        authorization: Authorization header for OIDC JWT authentication
         x_goog_pubsub_verification_token: Verification token from Pub/Sub header
 
     Returns:
@@ -96,27 +105,140 @@ async def spec_status_update(
     """
     settings = get_settings()
 
-    # Step 1: Verify token (security check)
-    if not x_goog_pubsub_verification_token:
-        logger.warning(
-            "Pub/Sub verification token missing in request",
-            extra={"message_id": envelope.message.messageId},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing verification token",
-        )
+    # Step 1: Verify authentication (OIDC or shared token)
+    auth_method = None
+    auth_failure_reason = None
 
-    if not secrets.compare_digest(
-        x_goog_pubsub_verification_token, settings.PUBSUB_VERIFICATION_TOKEN
-    ):
-        logger.warning(
-            "Pub/Sub verification token mismatch",
-            extra={"message_id": envelope.message.messageId},
+    # Try OIDC authentication first if enabled
+    if settings.PUBSUB_OIDC_ENABLED and settings.PUBSUB_EXPECTED_AUDIENCE:
+        if authorization:
+            try:
+                # Extract token from Authorization header
+                # Expected format: "Bearer <token>"
+                if not authorization.startswith("Bearer "):
+                    logger.warning(
+                        "Malformed Authorization header: missing 'Bearer ' prefix",
+                        extra={
+                            "message_id": envelope.message.messageId,
+                            "auth_header_prefix": authorization[:20] if authorization else None,
+                        },
+                    )
+                    auth_failure_reason = "Malformed Authorization header"
+                else:
+                    # Extract token using split for robustness
+                    parts = authorization.split(" ", 1)
+                    if len(parts) == 2:
+                        token = parts[1]
+                    else:
+                        logger.warning(
+                            "Malformed Authorization header: empty token",
+                            extra={"message_id": envelope.message.messageId},
+                        )
+                        auth_failure_reason = "Malformed Authorization header"
+                        token = None
+
+                    if token:
+                        # Validate the OIDC token
+                        validate_oidc_token(
+                            token=token,
+                            expected_audience=settings.PUBSUB_EXPECTED_AUDIENCE,
+                            expected_issuer=settings.PUBSUB_EXPECTED_ISSUER,
+                            expected_service_account_email=settings.PUBSUB_SERVICE_ACCOUNT_EMAIL
+                            or None,
+                        )
+                        auth_method = "oidc"
+                        logger.info(
+                            "Pub/Sub request authenticated via OIDC",
+                            extra={
+                                "message_id": envelope.message.messageId,
+                                "auth_method": "oidc",
+                                "audience": settings.PUBSUB_EXPECTED_AUDIENCE,
+                            },
+                        )
+            except OIDCValidationError as e:
+                logger.warning(
+                    f"OIDC validation failed: {str(e)}",
+                    extra={
+                        "message_id": envelope.message.messageId,
+                        "error": str(e),
+                    },
+                )
+                auth_failure_reason = f"OIDC validation failed: {str(e)}"
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error during OIDC validation: {str(e)}",
+                    extra={
+                        "message_id": envelope.message.messageId,
+                        "error": str(e),
+                    },
+                    exc_info=True,
+                )
+                auth_failure_reason = "OIDC validation error"
+        else:
+            logger.debug(
+                "Authorization header not provided, OIDC validation skipped",
+                extra={"message_id": envelope.message.messageId},
+            )
+            auth_failure_reason = "Missing Authorization header"
+
+    # Fall back to shared token verification if OIDC failed or is disabled
+    if auth_method is None and settings.PUBSUB_VERIFICATION_TOKEN:
+        if x_goog_pubsub_verification_token and secrets.compare_digest(
+            x_goog_pubsub_verification_token, settings.PUBSUB_VERIFICATION_TOKEN
+        ):
+            auth_method = "shared_token"
+            logger.info(
+                "Pub/Sub request authenticated via shared token",
+                extra={
+                    "message_id": envelope.message.messageId,
+                    "auth_method": "shared_token",
+                    "oidc_attempted": settings.PUBSUB_OIDC_ENABLED,
+                    "oidc_failure_reason": auth_failure_reason,
+                },
+            )
+        else:
+            # Determine log level based on whether this was the primary auth method
+            if not settings.PUBSUB_OIDC_ENABLED:
+                # Shared token was the primary method, log as warning
+                log_level = logging.WARNING
+            else:
+                # OIDC was primary and failed, this is just fallback failure - log as debug
+                log_level = logging.DEBUG
+
+            logger.log(
+                log_level,
+                "Shared token validation failed",
+                extra={
+                    "message_id": envelope.message.messageId,
+                    "oidc_enabled": settings.PUBSUB_OIDC_ENABLED,
+                    "oidc_failure_reason": auth_failure_reason,
+                    "shared_token_provided": bool(x_goog_pubsub_verification_token),
+                },
+            )
+
+    # Reject if neither authentication method succeeded
+    if auth_method is None:
+        failure_details = []
+        if settings.PUBSUB_OIDC_ENABLED:
+            failure_details.append(f"OIDC: {auth_failure_reason or 'not attempted'}")
+        if settings.PUBSUB_VERIFICATION_TOKEN:
+            if not x_goog_pubsub_verification_token:
+                failure_details.append("Shared token: missing")
+            else:
+                failure_details.append("Shared token: invalid")
+
+        logger.error(
+            "Authentication failed: all methods rejected",
+            extra={
+                "message_id": envelope.message.messageId,
+                "failure_details": "; ".join(failure_details),
+                "oidc_enabled": settings.PUBSUB_OIDC_ENABLED,
+                "has_shared_token": bool(settings.PUBSUB_VERIFICATION_TOKEN),
+            },
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing verification token",
+            detail="Invalid or missing authentication",
         )
 
     # Step 2: Log full envelope at debug level

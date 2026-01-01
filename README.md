@@ -1110,11 +1110,99 @@ gcloud pubsub subscriptions create spec-status-push \
   --push-endpoint=https://your-service-url/pubsub/spec-status \
   --push-auth-service-account=pubsub-invoker@PROJECT_ID.iam.gserviceaccount.com
 
-# 5. Deploy Cloud Run service with authentication required
+# 5. Deploy Cloud Run service with authentication required and OIDC configuration
 gcloud run deploy plan-scheduler \
   --image gcr.io/${PROJECT_ID}/plan-scheduler:latest \
   --region us-central1 \
-  --no-allow-unauthenticated
+  --no-allow-unauthenticated \
+  --set-env-vars PUBSUB_OIDC_ENABLED=true \
+  --set-env-vars PUBSUB_EXPECTED_AUDIENCE=https://your-service-url \
+  --set-env-vars PUBSUB_EXPECTED_ISSUER=https://accounts.google.com \
+  --set-env-vars PUBSUB_SERVICE_ACCOUNT_EMAIL=pubsub-invoker@PROJECT_ID.iam.gserviceaccount.com
+```
+
+**OIDC Authentication Configuration:**
+
+The service supports two authentication methods for Pub/Sub push endpoints:
+
+1. **OIDC JWT Verification (Recommended for Production)**
+   - Validates Google-signed JWT tokens from the `Authorization` header
+   - More secure than shared tokens (no secrets to manage)
+   - Requires Cloud Run IAM authentication
+   
+2. **Shared Token Verification (Fallback/Legacy)**
+   - Uses the `x-goog-pubsub-verification-token` header
+   - Requires managing shared secrets
+   - Works as fallback when OIDC fails
+
+**OIDC Configuration Environment Variables:**
+
+- `PUBSUB_OIDC_ENABLED` (default: `true`)
+  - Enable OIDC JWT verification for Pub/Sub push requests
+  - Set to `false` to use only shared token authentication
+
+- `PUBSUB_EXPECTED_AUDIENCE` (required when OIDC enabled)
+  - Expected audience claim in JWT tokens
+  - Set to your Cloud Run service URL
+  - Example: `https://plan-scheduler-abc123-uc.a.run.app`
+
+- `PUBSUB_EXPECTED_ISSUER` (default: `https://accounts.google.com`)
+  - Expected issuer claim in JWT tokens
+  - Use default for Google service account tokens
+
+- `PUBSUB_SERVICE_ACCOUNT_EMAIL` (optional but recommended)
+  - Expected service account email in JWT subject claim
+  - Provides additional security validation
+  - Example: `pubsub-invoker@my-project.iam.gserviceaccount.com`
+
+- `PUBSUB_VERIFICATION_TOKEN` (optional when OIDC enabled)
+  - Shared token for fallback authentication
+  - Required when `PUBSUB_OIDC_ENABLED=false`
+  - Used as backup if OIDC validation fails
+
+**Authentication Flow:**
+
+1. If OIDC is enabled and `Authorization` header is present:
+   - Extract JWT token from `Authorization: Bearer <token>` header
+   - Validate token signature using Google's public keys
+   - Verify audience, issuer, and optionally service account email
+   - Log authentication success/failure with structured metadata
+
+2. If OIDC validation fails or is disabled:
+   - Fall back to shared token verification
+   - Verify `x-goog-pubsub-verification-token` header
+   - Log authentication attempt and outcome
+
+3. If neither authentication method succeeds:
+   - Return 401 Unauthorized with detailed error
+   - Log authentication failure with reason
+
+**Security Best Practices:**
+
+- Always use OIDC authentication for production deployments
+- Set `--no-allow-unauthenticated` on Cloud Run to enforce authentication
+- Configure service account with minimal required permissions
+- Rotate shared tokens regularly if using fallback mode
+- Monitor authentication logs for suspicious activity
+- Use `PUBSUB_SERVICE_ACCOUNT_EMAIL` for enhanced security
+
+**Example: Testing OIDC Authentication:**
+
+```bash
+# Get your Cloud Run service URL
+SERVICE_URL=$(gcloud run services describe plan-scheduler \
+  --region us-central1 \
+  --format 'value(status.url)')
+
+# Verify OIDC is working by publishing a test message
+PAYLOAD='{"plan_id":"550e8400-e29b-41d4-a716-446655440000","spec_index":0,"status":"running"}'
+gcloud pubsub topics publish spec-status-updates --message="$PAYLOAD"
+
+# Check logs for OIDC authentication success
+gcloud run services logs read plan-scheduler \
+  --region us-central1 \
+  --limit 10 \
+  | grep "authenticated via OIDC"
 ```
 
 **Configuration with Dead-Letter Topic (Error Handling):**
