@@ -1505,7 +1505,8 @@ class TestPlanStatusOut:
 
         status_out = PlanStatusOut.from_records(plan_record, spec_records)
 
-        # Verify specs are returned in the order provided (caller should order them)
+        # Verify specs are returned in the same order as input (function does not sort)
+        # Caller is responsible for providing specs ordered by spec_index
         assert len(status_out.specs) == 5
         assert status_out.specs[0].spec_index == 2
         assert status_out.specs[1].spec_index == 0
