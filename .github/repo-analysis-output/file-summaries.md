@@ -38,8 +38,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for plans  
-**Size:** 9.98 KB  
-**LOC:** 236  
+**Size:** 9.95 KB  
+**LOC:** 234  
 **TODOs/FIXMEs:** 0  
 
 ## app/api/pubsub.py
@@ -47,8 +47,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for pubsub  
-**Size:** 10.26 KB  
-**LOC:** 238  
+**Size:** 10.38 KB  
+**LOC:** 241  
 **TODOs/FIXMEs:** 0  
 
 ## app/config.py
@@ -92,8 +92,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for plan  
-**Size:** 15.55 KB  
-**LOC:** 353  
+**Size:** 16.76 KB  
+**LOC:** 374  
 **TODOs/FIXMEs:** 0  
 
 ## app/models/pubsub.py
@@ -101,8 +101,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for pubsub  
-**Size:** 6.05 KB  
-**LOC:** 123  
+**Size:** 8.81 KB  
+**LOC:** 178  
 **TODOs/FIXMEs:** 0  
 
 ## app/services/__init__.py
@@ -128,8 +128,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for firestore service  
-**Size:** 35.57 KB  
-**LOC:** 683  
+**Size:** 36.69 KB  
+**LOC:** 697  
 **TODOs/FIXMEs:** 0  
 
 ## tests/__init__.py
@@ -227,8 +227,8 @@ Total files: 27
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 15.39 KB  
-**LOC:** 376  
+**Size:** 15.85 KB  
+**LOC:** 388  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_pubsub_models.py
@@ -236,8 +236,8 @@ Total files: 27
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 18.79 KB  
-**LOC:** 359  
+**Size:** 23.41 KB  
+**LOC:** 462  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_spec_status_update.py
@@ -245,6 +245,6 @@ Total files: 27
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 6.17 KB  
-**LOC:** 119  
+**Size:** 7.66 KB  
+**LOC:** 147  
 **TODOs/FIXMEs:** 0  

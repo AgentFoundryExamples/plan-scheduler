@@ -9,7 +9,7 @@ Includes classification of external dependencies as stdlib vs third-party.
 ## Statistics
 
 - **Total files**: 27
-- **Intra-repo dependencies**: 42
+- **Intra-repo dependencies**: 43
 - **External stdlib dependencies**: 18
 - **External third-party dependencies**: 20
 
@@ -70,8 +70,8 @@ Total: 20 unique packages
 - `app/config.py` (7 dependents)
 - `app/services/execution_service.py` (4 dependents)
 - `app/main.py` (4 dependents)
+- `app/models/pubsub.py` (3 dependents)
 - `app/dependencies.py` (2 dependents)
-- `app/models/pubsub.py` (2 dependents)
 - `app/api/health.py` (1 dependents)
 - `app/api/plans.py` (1 dependents)
 - `app/api/pubsub.py` (1 dependents)
@@ -82,9 +82,9 @@ Total: 20 unique packages
 - `app/dependencies.py` (4 dependencies)
 - `app/main.py` (4 dependencies)
 - `app/api/plans.py` (3 dependencies)
+- `app/services/firestore_service.py` (3 dependencies)
 - `tests/test_dependencies.py` (3 dependencies)
 - `tests/test_execution_service.py` (3 dependencies)
 - `tests/test_plans_api.py` (3 dependencies)
 - `tests/test_pubsub_api.py` (3 dependencies)
 - `app/services/execution_service.py` (2 dependencies)
-- `app/services/firestore_service.py` (2 dependencies)

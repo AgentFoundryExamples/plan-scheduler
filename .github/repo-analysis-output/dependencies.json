@@ -499,6 +499,10 @@
       "target": "app/models/plan.py"
     },
     {
+      "source": "app/services/firestore_service.py",
+      "target": "app/models/pubsub.py"
+    },
+    {
       "source": "tests/test_config.py",
       "target": "app/config.py"
     },
