@@ -300,14 +300,366 @@ assert record.must == ["item1"]
 
 ## Testing
 
-Comprehensive test coverage is available in `tests/test_plan_models.py`:
+Comprehensive test coverage is available in `tests/test_plan_models.py` and `tests/test_pubsub_models.py`:
 
 ```bash
 # Run model tests
 poetry run pytest tests/test_plan_models.py -v
+poetry run pytest tests/test_pubsub_models.py -v
 
 # Run with coverage
-poetry run pytest tests/test_plan_models.py --cov=app.models
+poetry run pytest tests/test_plan_models.py tests/test_pubsub_models.py --cov=app.models
+```
+
+## Pub/Sub Models
+
+This section documents the Pub/Sub payload models used for spec status updates.
+
+### Overview
+
+The Pub/Sub integration uses a two-layer structure:
+1. **Outer Envelope**: `PubSubPushEnvelope` - Standard Google Cloud Pub/Sub push format
+2. **Inner Payload**: `SpecStatusPayload` - Application-specific spec status data
+
+All models enforce that `plan_id` and `spec_index` are present to ensure downstream services can always resolve the relevant spec for updates.
+
+### SpecStatusPayload
+
+The decoded inner payload containing spec execution status information.
+
+```python
+from app.models.pubsub import SpecStatusPayload
+
+payload = SpecStatusPayload(
+    plan_id="550e8400-e29b-41d4-a716-446655440000",
+    spec_index=0,
+    status="finished",
+    stage="implementation"  # optional
+)
+```
+
+**Fields:**
+
+- `plan_id` (str, **required**): UUID string identifying the plan. Must be present for spec resolution.
+- `spec_index` (int, **required**): Zero-based index of the spec within the plan. Must be >= 0. Required for spec resolution.
+- `status` (str, **required**): Current status of spec execution. Must be one of:
+  - `"blocked"` - Waiting for dependencies
+  - `"running"` - Currently executing
+  - `"finished"` - Completed successfully
+  - `"failed"` - Execution failed
+- `stage` (str, **optional**): Execution stage/phase information for progress tracking (e.g., "analyzing", "implementing", "testing", "reviewing")
+
+**Validation:**
+- `plan_id` must be a non-empty string (UUID format validated at API level)
+- `spec_index` must be a non-negative integer
+- `status` must match the regex pattern: `^(blocked|running|finished|failed)$`
+- `stage` is optional and can be any string
+
+**Usage Notes:**
+- **Terminal Statuses**: `"finished"` and `"failed"` trigger state machine transitions
+- **Intermediate Statuses**: `"blocked"` and `"running"` with stage update `current_stage` field
+- Execution services **must** include both `plan_id` and `spec_index` in every status update
+- `stage` is useful for tracking progress within a spec execution (e.g., multiple phases)
+
+### PubSubMessage
+
+The message object within the Pub/Sub push envelope.
+
+```python
+from app.models.pubsub import PubSubMessage
+
+message = PubSubMessage(
+    data="eyJwbGFuX2lkIjoiNTUwZTg0MDAtZTI5Yi00MWQ0LWE3MTYtNDQ2NjU1NDQwMDAwIiwic3BlY19pbmRleCI6MCwic3RhdHVzIjoiZmluaXNoZWQifQ==",
+    messageId="1234567890",
+    publishTime="2025-01-01T12:00:00Z",
+    attributes={"key": "value"}
+)
+```
+
+**Fields:**
+
+- `data` (str, **required**): Base64-encoded message payload containing SpecStatusPayload JSON
+- `attributes` (dict[str, str]): Optional key-value metadata attached to the message (defaults to empty dict)
+- `messageId` (str): Unique identifier for this message assigned by Pub/Sub (defaults to empty string)
+- `publishTime` (str): RFC3339 timestamp when message was published (defaults to empty string)
+
+**Validation:**
+- `publishTime` accepts both string and datetime objects, converts to ISO format string
+- `data` must be valid base64-encoded UTF-8 JSON
+
+**Usage Notes:**
+- `messageId` is used for deduplication - the service tracks processed messageIds in history
+- `publishTime` is informational and used for logging/debugging
+- `attributes` can be used for routing or filtering in advanced Pub/Sub configurations
+
+### PubSubPushEnvelope
+
+Outer envelope for Pub/Sub push subscription requests.
+
+```python
+from app.models.pubsub import PubSubPushEnvelope, PubSubMessage
+
+envelope = PubSubPushEnvelope(
+    message=PubSubMessage(
+        data="base64-encoded-payload",
+        messageId="msg-123",
+        publishTime="2025-01-01T12:00:00Z",
+        attributes={}
+    ),
+    subscription="projects/my-project/subscriptions/my-sub"
+)
+```
+
+**Fields:**
+
+- `message` (PubSubMessage, **required**): The Pub/Sub message object containing data and metadata
+- `subscription` (str): Full resource name of the subscription (defaults to empty string)
+  - Format: `"projects/{project}/subscriptions/{subscription}"`
+
+**Validation:**
+- `message` must be a valid PubSubMessage object
+- `subscription` is optional but typically provided by Pub/Sub
+
+**Usage Notes:**
+- This model matches the exact JSON structure sent by Google Cloud Pub/Sub push subscriptions
+- The actual application payload is nested within `message.data` as base64-encoded JSON
+- `subscription` is useful for logging and routing in multi-subscription scenarios
+
+### decode_pubsub_message()
+
+Helper function to decode and parse base64-encoded Pub/Sub message payloads.
+
+```python
+from app.models.pubsub import decode_pubsub_message
+import base64
+import json
+
+# Encode a payload
+payload = {"plan_id": "abc-123", "spec_index": 0, "status": "running"}
+encoded = base64.b64encode(json.dumps(payload).encode()).decode()
+
+# Decode the message
+decoded = decode_pubsub_message(encoded)
+print(decoded)  # {"plan_id": "abc-123", "spec_index": 0, "status": "running"}
+```
+
+**Parameters:**
+- `encoded_data` (str): Base64-encoded string from message.data field
+
+**Returns:**
+- `dict[str, Any]`: Parsed JSON payload as a dictionary
+
+**Raises:**
+- `ValueError`: If base64 decoding fails, JSON parsing fails, or decoded data is not a JSON object
+
+**Error Messages:**
+The function provides descriptive error messages for common failure cases:
+- Empty or missing data: `"Message data is empty or missing"`
+- Invalid base64: `"Failed to decode base64 message data: {error}"`
+- Invalid UTF-8: `"Failed to decode message as UTF-8: {error}"`
+- Invalid JSON: `"Failed to parse message as JSON: {error}"`
+- Non-object JSON: `"Message payload must be a JSON object, got {type}"`
+
+**Usage Notes:**
+- This helper is used internally by the Pub/Sub endpoint
+- Execution services should use standard base64 encoding: `base64.b64encode(json.dumps(payload).encode()).decode()`
+- Ensure JSON is properly formatted before encoding
+
+### Complete Pub/Sub Integration Example
+
+```python
+import base64
+import json
+from app.models.pubsub import (
+    SpecStatusPayload,
+    PubSubMessage,
+    PubSubPushEnvelope,
+    decode_pubsub_message,
+)
+
+# 1. Execution service creates status payload
+status_payload = SpecStatusPayload(
+    plan_id="550e8400-e29b-41d4-a716-446655440000",
+    spec_index=0,
+    status="finished",
+    stage="implementation"
+)
+
+# 2. Encode payload for Pub/Sub
+payload_json = status_payload.model_dump_json()
+encoded_data = base64.b64encode(payload_json.encode()).decode()
+
+# 3. Pub/Sub wraps in push envelope (done by Pub/Sub service)
+envelope = PubSubPushEnvelope(
+    message=PubSubMessage(
+        data=encoded_data,
+        messageId="unique-msg-id-123",
+        publishTime="2025-01-01T12:00:00Z",
+        attributes={}
+    ),
+    subscription="projects/test-project/subscriptions/test-sub"
+)
+
+# 4. Plan Scheduler receives and processes
+# Decode the message
+decoded_dict = decode_pubsub_message(envelope.message.data)
+
+# Validate against schema
+payload = SpecStatusPayload(**decoded_dict)
+
+print(f"Processing status update: plan={payload.plan_id}, spec={payload.spec_index}, status={payload.status}")
+# Output: Processing status update: plan=550e8400-e29b-41d4-a716-446655440000, spec=0, status=finished
+```
+
+### Status Transition Examples
+
+**Example 1: Finishing a Spec**
+
+```python
+from app.models.pubsub import SpecStatusPayload
+
+# Execution service reports spec completion
+payload = SpecStatusPayload(
+    plan_id="550e8400-e29b-41d4-a716-446655440000",
+    spec_index=0,
+    status="finished"
+    # stage is optional for terminal statuses
+)
+
+# Plan Scheduler will:
+# 1. Mark spec 0 as finished
+# 2. Increment completed_specs counter
+# 3. Unblock spec 1 (blocked -> running)
+# 4. Trigger execution for spec 1
+```
+
+**Example 2: Reporting Progress with Stages**
+
+```python
+from app.models.pubsub import SpecStatusPayload
+
+# Execution service reports intermediate progress
+progress_payloads = [
+    SpecStatusPayload(
+        plan_id="550e8400-e29b-41d4-a716-446655440000",
+        spec_index=1,
+        status="running",
+        stage="analyzing"
+    ),
+    SpecStatusPayload(
+        plan_id="550e8400-e29b-41d4-a716-446655440000",
+        spec_index=1,
+        status="running",
+        stage="implementing"
+    ),
+    SpecStatusPayload(
+        plan_id="550e8400-e29b-41d4-a716-446655440000",
+        spec_index=1,
+        status="running",
+        stage="testing"
+    ),
+]
+
+# Plan Scheduler will:
+# 1. Update current_stage field to "analyzing", "implementing", "testing"
+# 2. Append each update to history
+# 3. Keep main status as "running"
+# 4. NOT trigger any state machine transitions
+```
+
+**Example 3: Manual Retry After Failure**
+
+```python
+from app.models.pubsub import SpecStatusPayload
+
+# Initial failure
+failure = SpecStatusPayload(
+    plan_id="550e8400-e29b-41d4-a716-446655440000",
+    spec_index=2,
+    status="failed"
+)
+# Plan is marked as failed
+
+# Manual intervention: Re-emit status to retry
+# Note: This requires re-creating the spec with status="running" first
+retry_attempt = SpecStatusPayload(
+    plan_id="550e8400-e29b-41d4-a716-446655440000",
+    spec_index=2,
+    status="running",
+    stage="retry-attempt-2"
+)
+
+# Eventually succeed
+success = SpecStatusPayload(
+    plan_id="550e8400-e29b-41d4-a716-446655440000",
+    spec_index=2,
+    status="finished"
+)
+
+# Note: Manual retries require careful orchestration
+# - Cannot transition from "failed" back to "running" automatically
+# - May require manual Firestore updates or admin intervention
+# - Consider implementing a retry endpoint for operational flexibility
+```
+
+**Example 4: Out-of-Order Prevention**
+
+```python
+from app.models.pubsub import SpecStatusPayload
+
+# Spec 1 is currently running (current_spec_index=1)
+# Spec 2 is blocked
+
+# Attempt to finish spec 2 before spec 1
+invalid_payload = SpecStatusPayload(
+    plan_id="550e8400-e29b-41d4-a716-446655440000",
+    spec_index=2,
+    status="finished"
+)
+
+# Plan Scheduler will:
+# 1. Detect out-of-order completion (spec 2 finishing while current_spec_index=1)
+# 2. Reject the update (transaction aborted)
+# 3. Log error with diagnostic information
+# 4. Return 204 No Content (graceful handling)
+# 5. NOT update any state
+
+# Action required: Investigate upstream execution service
+```
+
+### Edge Cases
+
+**Duplicate messageIds:**
+```python
+# Same messageId sent twice (Pub/Sub retry)
+payload = SpecStatusPayload(plan_id="abc", spec_index=0, status="finished")
+
+# First request: Processed successfully, messageId stored in history
+# Second request: Detected as duplicate, skipped, returns 204 No Content
+```
+
+**Stage-only updates:**
+```python
+# Status without stage - stage field remains unchanged
+payload1 = SpecStatusPayload(plan_id="abc", spec_index=0, status="running")
+
+# Status with stage - stage field updated
+payload2 = SpecStatusPayload(plan_id="abc", spec_index=0, status="running", stage="testing")
+
+# Both update history, but only payload2 updates current_stage
+```
+
+**Terminal status protection:**
+```python
+# Spec is already finished
+# Attempt to finish again (duplicate or race condition)
+duplicate = SpecStatusPayload(plan_id="abc", spec_index=0, status="finished")
+
+# Plan Scheduler will:
+# 1. Detect spec is already in terminal state
+# 2. Reject the duplicate terminal status
+# 3. Log warning
+# 4. Return 204 No Content (graceful handling)
 ```
 
 ## See Also
@@ -315,3 +667,4 @@ poetry run pytest tests/test_plan_models.py --cov=app.models
 - [Firestore Service Documentation](../services/firestore_service.py)
 - [API Endpoints](../api/) (future implementation)
 - [Project README](../../README.md)
+- [Pub/Sub API Endpoint](../api/pubsub.py)

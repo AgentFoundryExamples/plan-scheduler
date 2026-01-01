@@ -464,6 +464,92 @@ Receives and processes Pub/Sub push notifications for spec status updates. This 
 
 **Authentication:** Requires `x-goog-pubsub-verification-token` header matching the `PUBSUB_VERIFICATION_TOKEN` environment variable. Returns 401 Unauthorized if token is missing or invalid.
 
+**⚠️ Important:** Downstream execution services **must** include both `plan_id` and `spec_index` in all status update payloads to ensure proper spec resolution and state transitions.
+
+#### Workflow Overview
+
+The following diagram illustrates the Pub/Sub-driven orchestration workflow:
+
+```mermaid
+sequenceDiagram
+    participant ES as Execution Service
+    participant PS as Pub/Sub Topic
+    participant PH as Plan Scheduler<br/>/pubsub/spec-status
+    participant FS as Firestore
+    
+    Note over ES,FS: Spec 0 Execution
+    ES->>PS: Publish status update<br/>{plan_id, spec_index:0, status:"finished"}
+    PS->>PH: Push message (with messageId)
+    PH->>PH: Verify token
+    PH->>PH: Decode base64 payload
+    PH->>FS: Transaction START
+    FS-->>PH: Load plan & spec 0
+    PH->>PH: Check messageId (dedup)
+    PH->>PH: Validate ordering
+    PH->>FS: Mark spec 0 finished<br/>Unblock spec 1<br/>Update plan counters
+    FS-->>PH: Transaction COMMIT
+    PH->>ES: Trigger spec 1 execution
+    PH-->>PS: 204 No Content
+    
+    Note over ES,FS: Spec 1 Execution (Intermediate Status)
+    ES->>PS: Publish progress<br/>{plan_id, spec_index:1, status:"running", stage:"reviewing"}
+    PS->>PH: Push message
+    PH->>FS: Update spec 1 current_stage
+    PH-->>PS: 204 No Content
+    
+    Note over ES,FS: Spec 1 Failure
+    ES->>PS: Publish failure<br/>{plan_id, spec_index:1, status:"failed"}
+    PS->>PH: Push message
+    PH->>FS: Mark spec 1 failed<br/>Mark plan failed
+    PH-->>PS: 204 No Content
+    Note over PH: No further specs triggered
+```
+
+#### State Machine Diagram
+
+Each spec progresses through states based on status updates:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Blocked: Spec created<br/>(non-first spec)
+    [*] --> Running: Spec created<br/>(first spec, index 0)
+    
+    Blocked --> Running: Previous spec<br/>finished
+    
+    Running --> Running: Intermediate status<br/>(stage update)
+    Running --> Finished: Status "finished"
+    Running --> Failed: Status "failed"
+    
+    Finished --> [*]: Plan advances or completes
+    Failed --> [*]: Plan halted
+    
+    note right of Running
+        Intermediate statuses update
+        current_stage field:
+        - "analyzing"
+        - "implementing"
+        - "testing"
+        - "reviewing"
+        - Custom stages
+    end note
+    
+    note right of Finished
+        Triggers:
+        - Mark spec finished
+        - Increment completed_specs
+        - Unblock next spec
+        - Trigger next execution
+        - OR mark plan finished
+    end note
+    
+    note right of Failed
+        Triggers:
+        - Mark spec failed
+        - Mark plan failed
+        - Halt all execution
+    end note
+```
+
 #### Request Headers
 
 - `x-goog-pubsub-verification-token` (required): Verification token from Pub/Sub subscription configuration
@@ -497,10 +583,10 @@ The `message.data` field contains a base64-encoded JSON payload:
 
 **Payload Fields:**
 
-- `plan_id` (string, required): Plan identifier as a valid UUID string
-- `spec_index` (integer, required): Zero-based index of the spec in the plan
-- `status` (string, required): Execution status - `"blocked"`, `"running"`, `"finished"`, or `"failed"`
-- `stage` (string, optional): Execution stage/phase information (e.g., "implementation", "reviewing")
+- `plan_id` (string, **required**): Plan identifier as a valid UUID string. **Must** be provided by execution services.
+- `spec_index` (integer, **required**): Zero-based index of the spec in the plan. **Must** be provided by execution services.
+- `status` (string, **required**): Execution status - `"blocked"`, `"running"`, `"finished"`, or `"failed"`
+- `stage` (string, **optional**): Execution stage/phase information (e.g., "implementation", "reviewing"). When provided with an intermediate status, updates the `current_stage` field without changing the main `status`.
 
 #### Response Codes
 
@@ -510,6 +596,8 @@ The `message.data` field contains a base64-encoded JSON payload:
 - **500 Internal Server Error**: Server-side error (Firestore unavailable, etc.)
 
 #### Status Processing Semantics
+
+The endpoint implements a state machine that orchestrates spec execution in sequential order. Understanding these lifecycle rules is critical for proper integration.
 
 **Finished Status:**
 - Marks the spec as finished
@@ -524,23 +612,57 @@ The `message.data` field contains a base64-encoded JSON payload:
 **Failed Status:**
 - Marks the spec as failed
 - Sets `plan.overall_status` to `"failed"`
-- Records in history
-- No further specs are triggered
+- Halts the entire plan - no further specs are triggered
+- Records failure in history
+- Plan cannot be automatically resumed (requires manual intervention)
 
 **Intermediate Statuses (blocked, running, or custom stages):**
 - Updates the `current_stage` field on the spec
-- Appends to history
+- Appends to history with timestamp and metadata
 - Main `status` field remains unchanged
 - Supports manual retries and detailed progress tracking
+- Does **not** advance the plan state machine
+- Use for reporting progress within a spec (e.g., "analyzing", "implementing", "testing", "reviewing")
+
+**Manual Retry Workflow:**
+When a spec needs to be retried manually:
+1. Emit intermediate status updates (e.g., status="running", stage="retry-attempt-2") to track retry progress
+2. The status remains "running" throughout the retry attempts
+3. Eventually emit either "finished" (on success) or "failed" (on exhaustion of retries)
+4. Manual retries **do not** automatically advance the plan - only "finished" or "failed" statuses trigger state transitions
 
 #### Idempotency and Ordering
 
-The endpoint implements robust idempotency and ordering guarantees:
+The endpoint implements robust idempotency and ordering guarantees to ensure reliable operation:
 
-1. **Duplicate Message Detection**: Uses `messageId` in history to detect and skip duplicate Pub/Sub messages on retries
-2. **Terminal Status Protection**: Prevents duplicate terminal statuses (e.g., finishing a spec that's already finished)
-3. **Out-of-Order Detection**: Aborts transaction if a later spec tries to finish before an earlier spec
-4. **History Tracking**: Every status update creates a history entry with timestamp, status, stage, messageId, and raw payload snippet
+**Deduplication via messageId:**
+1. Every Pub/Sub message includes a unique `messageId` assigned by Pub/Sub
+2. The service stores `messageId` in the spec's history for each processed update
+3. If a message with the same `messageId` is received again (Pub/Sub retry), it is detected and skipped
+4. Returns 204 No Content for duplicate messages (idempotent success response)
+5. Clients can safely retry failed requests - the service will detect and ignore duplicates
+
+**Terminal Status Protection:**
+- Prevents duplicate terminal statuses (e.g., finishing a spec that's already finished)
+- Once a spec reaches "finished" or "failed" status, subsequent terminal status updates for that spec are rejected
+- Protects against race conditions and ensures state machine integrity
+- Out-of-order terminal statuses are logged as warnings
+
+**Out-of-Order Detection:**
+- Only the current spec (identified by `plan.current_spec_index`) is allowed to finish
+- If a later spec tries to finish before the current spec, the transaction is aborted
+- Out-of-order completions are logged as errors with diagnostic information
+- **Action Required:** Investigate upstream execution services if out-of-order events occur
+- Do **not** retry out-of-order events indefinitely - they indicate a logic error in execution orchestration
+
+**History Tracking:**
+- Every status update creates a history entry with:
+  - ISO 8601 timestamp
+  - Received status and stage values
+  - Pub/Sub messageId for deduplication
+  - Raw payload snippet (first 1000 chars) for debugging
+- History is append-only and provides full audit trail
+- Use history to diagnose issues, track retry attempts, and understand state transitions
 
 #### Error Handling
 
@@ -548,6 +670,60 @@ The endpoint implements robust idempotency and ordering guarantees:
 - **Firestore Errors**: Logged and returns 500
 - **ExecutionService Failures**: Logged but don't fail the request (transaction already committed)
 - **Transaction Contention**: Automatically retried by Firestore
+
+#### Operational Guidance
+
+**Expected HTTP Responses:**
+- **204 No Content**: Success response for all valid requests
+  - Includes successful updates
+  - Includes duplicate message detection (idempotent retries)
+  - Includes not-found scenarios (plan/spec doesn't exist)
+  - Fast response time (typically < 500ms for transaction commit)
+
+**Logging Expectations:**
+- **INFO Level**: Normal status transitions, spec unblocking, plan completion
+- **WARNING Level**: Duplicate messages, out-of-order terminal statuses, missing plans/specs
+- **ERROR Level**: Out-of-order spec finishing, Firestore errors, unexpected failures
+- All logs include structured metadata: `plan_id`, `spec_index`, `status`, `message_id`
+- Use logs to monitor execution flow, diagnose issues, and audit state transitions
+
+**Handling Out-of-Order Events:**
+- Out-of-order events are **rejected** and logged as errors
+- These indicate a bug in execution orchestration logic
+- **Do not** retry indefinitely - investigate root cause in upstream services
+- Check if multiple execution instances are running concurrently
+- Verify that execution services respect the sequential spec order
+- Review history entries to understand the sequence of events
+
+**Pub/Sub Retry Semantics:**
+- Pub/Sub automatically retries failed requests (5xx errors, timeouts, connection failures)
+- Default retry policy: exponential backoff with maximum backoff of 600 seconds
+- Messages are deduplicated using `messageId` - retries are safe and idempotent
+- If a message fails repeatedly after 7 days, it is moved to a dead-letter topic (if configured)
+- Configure dead-letter topics to capture messages that cannot be processed after retries
+
+**Performance Considerations:**
+- The endpoint handler is designed to return quickly (< 1 second)
+- Heavy workloads should **not** be performed in the request handler
+- Firestore transactions use optimistic concurrency - high contention may cause retries
+- ExecutionService triggers are performed **after** transaction commit to avoid blocking
+- Monitor Firestore transaction retry rates if throughput is high
+
+**Security Best Practices:**
+- **Token Rotation**: Rotate `PUBSUB_VERIFICATION_TOKEN` regularly (monthly recommended)
+- Update the token in both:
+  1. Environment variable: `PUBSUB_VERIFICATION_TOKEN`
+  2. Pub/Sub subscription: `--push-auth-token-header` configuration
+- Use strong, randomly generated tokens (min 32 characters)
+- Consider using Pub/Sub IAM authentication instead of shared tokens for production:
+  - Configure push subscription with service account authentication
+  - Grant `roles/run.invoker` to Pub/Sub service account
+  - Enable Cloud Run IAM authentication (`--no-allow-unauthenticated`)
+  - This eliminates shared secrets and provides better security
+- **JWT Verification**: When using IAM authentication, Pub/Sub sends JWT tokens
+  - Cloud Run automatically verifies JWT signatures
+  - No additional verification code needed in the application
+  - More secure than shared token approach
 
 #### Example Usage
 
@@ -612,21 +788,84 @@ print(f"Status: {response.status_code}")
 
 To configure a Pub/Sub push subscription to call this endpoint:
 
+**Quick Setup with Token Authentication:**
+
 ```bash
-# Create a Pub/Sub topic
+# 1. Create a Pub/Sub topic
 gcloud pubsub topics create spec-status-updates
 
-# Create a push subscription
-gcloud pubsub subscriptions create spec-status-push \
-  --topic=spec-status-updates \
-  --push-endpoint=https://your-service-url/pubsub/spec-status \
-  --push-auth-token-header=x-goog-pubsub-verification-token=your-verification-token
+# 2. Generate a secure verification token
+TOKEN=$(openssl rand -base64 32)
+echo "Generated token: $TOKEN"
+echo "Set this as PUBSUB_VERIFICATION_TOKEN in your service"
 
-# For Cloud Run with IAM authentication (more secure):
+# 3. Create a push subscription with token authentication
 gcloud pubsub subscriptions create spec-status-push \
   --topic=spec-status-updates \
   --push-endpoint=https://your-service-url/pubsub/spec-status \
-  --push-auth-service-account=SERVICE_ACCOUNT_EMAIL
+  --push-auth-token-header=x-goog-pubsub-verification-token=$TOKEN
+
+# 4. Configure retry policy (optional but recommended)
+gcloud pubsub subscriptions update spec-status-push \
+  --min-retry-delay=10s \
+  --max-retry-delay=600s
+```
+
+**Production Setup with IAM Authentication (Recommended):**
+
+```bash
+# 1. Create a Pub/Sub topic
+gcloud pubsub topics create spec-status-updates
+
+# 2. Create a service account for Pub/Sub
+gcloud iam service-accounts create pubsub-invoker \
+  --display-name="Pub/Sub Invoker for Plan Scheduler"
+
+# 3. Grant the service account permission to invoke Cloud Run
+gcloud run services add-iam-policy-binding plan-scheduler \
+  --region=us-central1 \
+  --member="serviceAccount:pubsub-invoker@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
+# 4. Create push subscription with service account authentication
+gcloud pubsub subscriptions create spec-status-push \
+  --topic=spec-status-updates \
+  --push-endpoint=https://your-service-url/pubsub/spec-status \
+  --push-auth-service-account=pubsub-invoker@PROJECT_ID.iam.gserviceaccount.com
+
+# 5. Deploy Cloud Run service with authentication required
+gcloud run deploy plan-scheduler \
+  --image gcr.io/${PROJECT_ID}/plan-scheduler:latest \
+  --region us-central1 \
+  --no-allow-unauthenticated
+```
+
+**Configuration with Dead-Letter Topic (Error Handling):**
+
+```bash
+# 1. Create dead-letter topic for failed messages
+gcloud pubsub topics create spec-status-dlq
+
+# 2. Create subscription with dead-letter configuration
+gcloud pubsub subscriptions create spec-status-push \
+  --topic=spec-status-updates \
+  --push-endpoint=https://your-service-url/pubsub/spec-status \
+  --dead-letter-topic=spec-status-dlq \
+  --max-delivery-attempts=5
+```
+
+**Testing the Subscription:**
+
+```bash
+# Publish a test message
+PAYLOAD='{"plan_id":"550e8400-e29b-41d4-a716-446655440000","spec_index":0,"status":"running","stage":"testing"}'
+gcloud pubsub topics publish spec-status-updates --message="$PAYLOAD"
+
+# Monitor subscription delivery
+gcloud pubsub subscriptions describe spec-status-push
+
+# View Cloud Run logs to verify message processing
+gcloud run services logs read plan-scheduler --region=us-central1 --limit=50
 ```
 
 ### Plan Ingestion
