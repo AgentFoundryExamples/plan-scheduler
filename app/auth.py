@@ -118,7 +118,10 @@ def validate_oidc_token(
             token_email = decoded_token.get("email")
 
             # Check both sub and email claims as different token types may use different fields
-            if token_subject != expected_service_account_email and token_email != expected_service_account_email:
+            if (
+                token_subject != expected_service_account_email
+                and token_email != expected_service_account_email
+            ):
                 logger.warning(
                     "OIDC token validation failed: service account mismatch",
                     extra={
