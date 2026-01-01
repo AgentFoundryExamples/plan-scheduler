@@ -972,3 +972,314 @@ def test_get_plan_status_logs_not_found(client, caplog):
         assert response.status_code == 404
         log_messages = [record.message for record in caplog.records]
         assert any("Plan not found" in msg for msg in log_messages)
+
+
+def test_get_plan_status_multiple_specs_ordered_by_spec_index(client):
+    """Test that GET /plans/{plan_id} returns specs ordered by spec_index."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 5,
+        "completed_specs": 2,
+        "current_spec_index": 2,
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    # Create specs in order (as returned from Firestore ordered query)
+    spec_data_list = [
+        {
+            "spec_index": i,
+            "purpose": f"Spec {i}",
+            "vision": f"Vision {i}",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "finished" if i < 2 else ("running" if i == 2 else "blocked"),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": f"stage-{i}" if i == 2 else None,
+            "history": [],
+        }
+        for i in range(5)
+    ]
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, spec_data_list)
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["specs"]) == 5
+        # Verify specs are in correct order
+        for i in range(5):
+            assert data["specs"][i]["spec_index"] == i
+            assert data["specs"][i]["status"] == spec_data_list[i]["status"]
+
+
+def test_get_plan_status_completed_specs_count_accuracy(client):
+    """Test that GET /plans/{plan_id} accurately counts completed specs."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 10,
+        "completed_specs": 0,  # Will be computed from specs
+        "current_spec_index": 4,
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    # 4 finished specs out of 10
+    spec_data_list = [
+        {
+            "spec_index": i,
+            "purpose": f"Spec {i}",
+            "vision": f"Vision {i}",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "finished" if i < 4 else ("running" if i == 4 else "blocked"),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": None,
+            "history": [],
+        }
+        for i in range(10)
+    ]
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, spec_data_list)
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Completed specs should be computed from actual spec records
+        assert data["completed_specs"] == 4
+        assert data["total_specs"] == 10
+        assert data["current_spec_index"] == 4
+
+
+def test_get_plan_status_current_spec_index_from_first_running(client):
+    """Test that current_spec_index is derived from first running spec."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 6,
+        "completed_specs": 0,
+        "current_spec_index": None,  # Will be computed
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    spec_data_list = [
+        {
+            "spec_index": i,
+            "purpose": f"Spec {i}",
+            "vision": f"Vision {i}",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "finished" if i < 3 else ("running" if i == 3 else "blocked"),
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": "active" if i == 3 else None,
+            "history": [],
+        }
+        for i in range(6)
+    ]
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, spec_data_list)
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Current spec index should be derived from first running spec (spec 3)
+        assert data["current_spec_index"] == 3
+
+
+def test_get_plan_status_with_specs_missing_stage_data(client):
+    """Test that specs without current_stage return None for stage field."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 2,
+        "completed_specs": 0,
+        "current_spec_index": 0,
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    spec_data_list = [
+        {
+            "spec_index": 0,
+            "purpose": "Spec 0",
+            "vision": "Vision 0",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "running",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            # No current_stage field
+            "history": [],
+        },
+        {
+            "spec_index": 1,
+            "purpose": "Spec 1",
+            "vision": "Vision 1",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "blocked",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": None,  # Explicit None
+            "history": [],
+        },
+    ]
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, spec_data_list)
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Both specs should have None stage (using getattr with default None)
+        assert data["specs"][0]["stage"] is None
+        assert data["specs"][1]["stage"] is None
+
+
+def test_get_plan_status_with_stage_from_pubsub_updates(client):
+    """Test that stage data from Pub/Sub updates is included in response."""
+    from datetime import UTC, datetime
+    from unittest.mock import MagicMock
+
+    plan_id = str(uuid.uuid4())
+
+    plan_data = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+        "total_specs": 3,
+        "completed_specs": 1,
+        "current_spec_index": 1,
+        "last_event_at": datetime.now(UTC),
+        "raw_request": {},
+    }
+
+    # Specs with current_stage values from Pub/Sub updates
+    spec_data_list = [
+        {
+            "spec_index": 0,
+            "purpose": "Spec 0",
+            "vision": "Vision 0",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "finished",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": "completed",  # From Pub/Sub
+            "history": [],
+        },
+        {
+            "spec_index": 1,
+            "purpose": "Spec 1",
+            "vision": "Vision 1",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "running",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": "implementation",  # From Pub/Sub
+            "history": [],
+        },
+        {
+            "spec_index": 2,
+            "purpose": "Spec 2",
+            "vision": "Vision 2",
+            "must": [],
+            "dont": [],
+            "nice": [],
+            "assumptions": [],
+            "status": "blocked",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "current_stage": None,
+            "history": [],
+        },
+    ]
+
+    with (
+        patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+        patch("app.api.plans.get_firestore_client") as mock_client,
+    ):
+        mock_get_plan.return_value = (plan_data, spec_data_list)
+        mock_client.return_value = MagicMock()
+
+        response = client.get(f"/plans/{plan_id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Stage data from Pub/Sub should be propagated
+        assert data["specs"][0]["stage"] == "completed"
+        assert data["specs"][1]["stage"] == "implementation"
+        assert data["specs"][2]["stage"] is None
