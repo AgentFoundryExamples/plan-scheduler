@@ -132,7 +132,12 @@ docker-test: docker-stop docker-build docker-run-test
 	@sleep 3
 	@echo ""
 	@echo "Testing health endpoint..."
-	@curl -s http://localhost:8080/health || echo "Health check failed!"
+	@if command -v curl >/dev/null 2>&1; then \
+		curl -s http://localhost:8080/health || echo "Health check failed!"; \
+	else \
+		echo "curl not found - skipping health check test"; \
+		echo "Install curl to test the health endpoint"; \
+	fi
 	@echo ""
 	@echo ""
 	@echo "Checking container user (should be 'appuser')..."

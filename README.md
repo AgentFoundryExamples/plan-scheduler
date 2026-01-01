@@ -176,19 +176,22 @@ The service can be containerized and run with Docker, which is useful for local 
 ### Build Docker Image
 
 ```bash
-# Using Makefile
+# Using Makefile (default UID/GID 1000)
 make docker-build
 
 # Or using Docker directly
 docker build -t plan-scheduler:latest .
+
+# Build with custom UID/GID to avoid conflicts (optional)
+docker build --build-arg APP_UID=10000 --build-arg APP_GID=10000 -t plan-scheduler:latest .
 ```
 
 The Dockerfile is optimized for Cloud Run with the following features:
 - **Multi-stage build** for smaller final image (~200MB)
-- **Non-root execution**: Runs as dedicated `appuser` (UID 1000) for security
+- **Non-root execution**: Runs as dedicated `appuser` (default UID/GID 1000, configurable via build args)
 - **Builder stage**: Installs Poetry and exports dependencies to requirements.txt
 - **Final stage**: Uses Python 3.12 slim base image with only runtime dependencies
-- **Security**: No Poetry in final image, deterministic user permissions
+- **Security**: No Poetry in final image, deterministic user permissions, dedicated entrypoint script
 - **Cloud Run ready**: Exposes port 8080, binds to 0.0.0.0, respects PORT/WORKERS/LOG_LEVEL env vars
 - **Efficient caching**: Dependency layers cached separately from application code
 
@@ -1776,7 +1779,14 @@ gcloud run deploy plan-scheduler \
   --max-instances 10
 ```
 
-**Note**: Cloud Run automatically injects the `PORT` environment variable, so you don't need to set it.
+**Important Notes:**
+- Cloud Run automatically injects the `PORT` environment variable, so you don't need to set it.
+- The `PUBSUB_EXPECTED_AUDIENCE` should match your actual Cloud Run service URL. After initial deployment, verify the URL with:
+  ```bash
+  SERVICE_URL=$(gcloud run services describe plan-scheduler --region ${REGION} --format 'value(status.url)')
+  echo "Actual service URL: ${SERVICE_URL}"
+  ```
+  Then update the environment variable if needed to match the actual URL.
 
 #### 3. Configure Environment Variables
 

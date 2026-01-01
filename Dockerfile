@@ -29,13 +29,19 @@ RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
 # Use Python 3.12 slim image for a lightweight container
 FROM python:3.12-slim
 
+# Build arguments for configurable user/group IDs
+# Default to 1000, but can be overridden at build time to avoid conflicts
+# Example: docker build --build-arg APP_UID=10000 --build-arg APP_GID=10000 .
+ARG APP_UID=1000
+ARG APP_GID=1000
+
 # Set working directory
 WORKDIR /app
 
-# Create non-root user and group with specific UID/GID for security
-# Using UID/GID 1000 as a common non-privileged user ID
-RUN groupadd -r -g 1000 appuser && \
-    useradd -r -u 1000 -g appuser -s /sbin/nologin -c "Application user" appuser
+# Create non-root user and group with configurable UID/GID for security
+# Using default UID/GID 1000, but configurable via build args
+RUN groupadd -r -g ${APP_GID} appuser && \
+    useradd -r -u ${APP_UID} -g appuser -s /sbin/nologin -c "Application user" appuser
 
 # Copy requirements.txt from the builder stage
 COPY --from=builder /app/requirements.txt ./
@@ -47,12 +53,13 @@ RUN pip install --no-cache-dir \
     --trusted-host files.pythonhosted.org \
     -r requirements.txt
 
-# Copy application code
+# Copy application code and entrypoint script
 COPY app ./app
+COPY docker-entrypoint.sh ./
 
-# Set ownership of application directory to non-root user
-# This ensures the application can read its code and write temp files if needed
-RUN chown -R appuser:appuser /app
+# Make entrypoint script executable and set ownership
+RUN chmod +x docker-entrypoint.sh && \
+    chown -R appuser:appuser /app
 
 # Expose port 8080 (Cloud Run default)
 EXPOSE 8080
@@ -69,10 +76,6 @@ ENV PORT=8080 \
 # All subsequent commands and the application will run as this user
 USER appuser
 
-# Run the application with uvicorn
-# --host 0.0.0.0: Binds to all interfaces (required for Cloud Run)
-# --port ${PORT}: Uses PORT environment variable (Cloud Run injects this)
-# --workers ${WORKERS}: Configurable worker count (default 1 for Cloud Run)
-# --log-level: Uses LOG_LEVEL environment variable (converted to lowercase for uvicorn)
-# Note: Cloud Run health checks use the /health endpoint directly, no Docker HEALTHCHECK needed
-CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers ${WORKERS} --log-level $(echo ${LOG_LEVEL} | tr '[:upper:]' '[:lower:]')"
+# Use entrypoint script to start uvicorn with proper configuration
+# This avoids shell injection vulnerabilities from using sh -c with CMD
+ENTRYPOINT ["./docker-entrypoint.sh"]
