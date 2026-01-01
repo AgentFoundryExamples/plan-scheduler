@@ -2034,3 +2034,395 @@ def test_process_spec_status_update_firestore_resource_exhausted(mock_transactio
 
     assert "Firestore API error" in str(exc_info.value)
     assert plan_id in str(exc_info.value)
+
+
+# Tests for get_plan_with_specs functionality
+
+
+def test_get_plan_with_specs_returns_plan_and_specs(mock_firestore_client):
+    """Test that get_plan_with_specs returns plan data and spec list."""
+    from datetime import UTC, datetime
+
+    from app.services.firestore_service import get_plan_with_specs
+
+    plan_id = "test-plan-id"
+    now = datetime.now(UTC)
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": now,
+        "updated_at": now,
+        "total_specs": 2,
+        "completed_specs": 1,
+        "current_spec_index": 1,
+        "last_event_at": now,
+        "raw_request": {},
+    }
+
+    # Mock spec documents
+    mock_spec_doc_1 = MagicMock()
+    mock_spec_doc_1.to_dict.return_value = {
+        "spec_index": 0,
+        "purpose": "Spec 0",
+        "vision": "Vision 0",
+        "status": "finished",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    mock_spec_doc_2 = MagicMock()
+    mock_spec_doc_2.to_dict.return_value = {
+        "spec_index": 1,
+        "purpose": "Spec 1",
+        "vision": "Vision 1",
+        "status": "running",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+
+    mock_specs_query = MagicMock()
+    mock_specs_query.stream.return_value = [mock_spec_doc_1, mock_spec_doc_2]
+
+    mock_specs_ref = MagicMock()
+    mock_specs_ref.order_by.return_value = mock_specs_query
+
+    mock_plan_ref.collection.return_value = mock_specs_ref
+    mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+    plan_data, spec_list = get_plan_with_specs(plan_id, mock_firestore_client)
+
+    assert plan_data is not None
+    assert plan_data["plan_id"] == plan_id
+    assert len(spec_list) == 2
+    assert spec_list[0]["spec_index"] == 0
+    assert spec_list[1]["spec_index"] == 1
+
+
+def test_get_plan_with_specs_uses_single_ordered_query(mock_firestore_client):
+    """Test that get_plan_with_specs uses a single query ordered by spec_index."""
+    from datetime import UTC, datetime
+
+    from app.services.firestore_service import get_plan_with_specs
+
+    plan_id = "test-plan-id"
+    now = datetime.now(UTC)
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": now,
+        "updated_at": now,
+        "total_specs": 3,
+        "last_event_at": now,
+        "raw_request": {},
+    }
+
+    # Mock spec documents
+    mock_spec_docs = [
+        MagicMock(
+            to_dict=lambda i=i: {
+                "spec_index": i,
+                "purpose": f"Spec {i}",
+                "vision": f"Vision {i}",
+                "status": "blocked",
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        for i in range(3)
+    ]
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+
+    mock_specs_query = MagicMock()
+    mock_specs_query.stream.return_value = mock_spec_docs
+
+    mock_specs_ref = MagicMock()
+    mock_specs_ref.order_by.return_value = mock_specs_query
+
+    mock_plan_ref.collection.return_value = mock_specs_ref
+    mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+    # Import firestore.Query to verify direction constant
+    from google.cloud import firestore
+
+    get_plan_with_specs(plan_id, mock_firestore_client)
+
+    # Verify single query was made with correct ordering
+    mock_specs_ref.order_by.assert_called_once_with(
+        "spec_index", direction=firestore.Query.ASCENDING
+    )
+    mock_specs_query.stream.assert_called_once()
+
+
+def test_get_plan_with_specs_returns_none_for_missing_plan(mock_firestore_client):
+    """Test that get_plan_with_specs returns None for non-existent plan."""
+    from app.services.firestore_service import get_plan_with_specs
+
+    plan_id = "missing-plan-id"
+
+    # Mock plan document - doesn't exist
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = False
+
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+    mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+    plan_data, spec_list = get_plan_with_specs(plan_id, mock_firestore_client)
+
+    assert plan_data is None
+    assert spec_list == []
+
+
+def test_get_plan_with_specs_handles_empty_specs(mock_firestore_client):
+    """Test that get_plan_with_specs handles plans with no specs."""
+    from datetime import UTC, datetime
+
+    from app.services.firestore_service import get_plan_with_specs
+
+    plan_id = "test-plan-id"
+    now = datetime.now(UTC)
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": now,
+        "updated_at": now,
+        "total_specs": 0,
+        "last_event_at": now,
+        "raw_request": {},
+    }
+
+    # Mock empty specs query
+    mock_specs_query = MagicMock()
+    mock_specs_query.stream.return_value = []
+
+    mock_specs_ref = MagicMock()
+    mock_specs_ref.order_by.return_value = mock_specs_query
+
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+    mock_plan_ref.collection.return_value = mock_specs_ref
+    mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+    plan_data, spec_list = get_plan_with_specs(plan_id, mock_firestore_client)
+
+    assert plan_data is not None
+    assert spec_list == []
+
+
+def test_get_plan_with_specs_filters_empty_spec_documents(mock_firestore_client):
+    """Test that get_plan_with_specs filters out empty spec documents."""
+    from datetime import UTC, datetime
+
+    from app.services.firestore_service import get_plan_with_specs
+
+    plan_id = "test-plan-id"
+    now = datetime.now(UTC)
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": now,
+        "updated_at": now,
+        "total_specs": 2,
+        "last_event_at": now,
+        "raw_request": {},
+    }
+
+    # Mock spec documents - one valid, one empty
+    mock_spec_doc_1 = MagicMock()
+    mock_spec_doc_1.to_dict.return_value = {
+        "spec_index": 0,
+        "purpose": "Spec 0",
+        "vision": "Vision 0",
+        "status": "blocked",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    mock_spec_doc_2 = MagicMock()
+    mock_spec_doc_2.to_dict.return_value = None  # Empty document
+
+    # Setup mock references
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+
+    mock_specs_query = MagicMock()
+    mock_specs_query.stream.return_value = [mock_spec_doc_1, mock_spec_doc_2]
+
+    mock_specs_ref = MagicMock()
+    mock_specs_ref.order_by.return_value = mock_specs_query
+
+    mock_plan_ref.collection.return_value = mock_specs_ref
+    mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+    plan_data, spec_list = get_plan_with_specs(plan_id, mock_firestore_client)
+
+    assert plan_data is not None
+    # Should only include the valid spec document
+    assert len(spec_list) == 1
+    assert spec_list[0]["spec_index"] == 0
+
+
+def test_get_plan_with_specs_raises_error_for_empty_plan_document(mock_firestore_client):
+    """Test that get_plan_with_specs raises error for empty plan document."""
+    from app.services.firestore_service import FirestoreOperationError, get_plan_with_specs
+
+    plan_id = "test-plan-id"
+
+    # Mock plan document - exists but is empty
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = None  # Empty document
+
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+    mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+    with pytest.raises(FirestoreOperationError) as exc_info:
+        get_plan_with_specs(plan_id, mock_firestore_client)
+
+    assert "exists but is empty" in str(exc_info.value)
+
+
+def test_get_plan_with_specs_handles_firestore_errors(mock_firestore_client):
+    """Test that get_plan_with_specs handles Firestore API errors."""
+    from app.services.firestore_service import FirestoreOperationError, get_plan_with_specs
+
+    plan_id = "test-plan-id"
+
+    # Mock plan ref to raise Firestore error
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.side_effect = gcp_exceptions.DeadlineExceeded("Timeout")
+
+    mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+    with pytest.raises(FirestoreOperationError) as exc_info:
+        get_plan_with_specs(plan_id, mock_firestore_client)
+
+    assert "Firestore API error" in str(exc_info.value)
+    assert plan_id in str(exc_info.value)
+
+
+def test_get_plan_with_specs_uses_default_client_when_none_provided(
+    mock_settings, mock_firestore_client
+):
+    """Test that get_plan_with_specs uses get_client() when client not provided."""
+    from datetime import UTC, datetime
+
+    from app.services.firestore_service import get_plan_with_specs
+
+    plan_id = "test-plan-id"
+    now = datetime.now(UTC)
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": now,
+        "updated_at": now,
+        "total_specs": 0,
+        "last_event_at": now,
+        "raw_request": {},
+    }
+
+    mock_specs_query = MagicMock()
+    mock_specs_query.stream.return_value = []
+
+    mock_specs_ref = MagicMock()
+    mock_specs_ref.order_by.return_value = mock_specs_query
+
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+    mock_plan_ref.collection.return_value = mock_specs_ref
+    mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+    # Call without client parameter
+    plan_data, spec_list = get_plan_with_specs(plan_id)
+
+    assert plan_data is not None
+    assert spec_list == []
+
+
+def test_get_plan_with_specs_logs_successful_fetch(mock_firestore_client, caplog):
+    """Test that get_plan_with_specs logs successful fetches."""
+    from datetime import UTC, datetime
+
+    from app.services.firestore_service import get_plan_with_specs
+
+    plan_id = "test-plan-id"
+    now = datetime.now(UTC)
+
+    # Mock plan document
+    mock_plan_snapshot = MagicMock()
+    mock_plan_snapshot.exists = True
+    mock_plan_snapshot.to_dict.return_value = {
+        "plan_id": plan_id,
+        "overall_status": "running",
+        "created_at": now,
+        "updated_at": now,
+        "total_specs": 2,
+        "last_event_at": now,
+        "raw_request": {},
+    }
+
+    mock_spec_doc_1 = MagicMock()
+    mock_spec_doc_1.to_dict.return_value = {
+        "spec_index": 0,
+        "purpose": "Spec 0",
+        "vision": "Vision 0",
+        "status": "blocked",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    mock_spec_doc_2 = MagicMock()
+    mock_spec_doc_2.to_dict.return_value = {
+        "spec_index": 1,
+        "purpose": "Spec 1",
+        "vision": "Vision 1",
+        "status": "blocked",
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    mock_specs_query = MagicMock()
+    mock_specs_query.stream.return_value = [mock_spec_doc_1, mock_spec_doc_2]
+
+    mock_specs_ref = MagicMock()
+    mock_specs_ref.order_by.return_value = mock_specs_query
+
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+    mock_plan_ref.collection.return_value = mock_specs_ref
+    mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+    with caplog.at_level(logging.INFO):
+        get_plan_with_specs(plan_id, mock_firestore_client)
+
+    info_messages = [record.message for record in caplog.records if record.levelname == "INFO"]
+    assert any("Fetched plan" in msg and plan_id in msg for msg in info_messages)
+    assert any("2 specs" in msg for msg in info_messages)

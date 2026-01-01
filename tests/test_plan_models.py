@@ -1444,6 +1444,412 @@ class TestPlanStatusOut:
         assert data["current_spec_index"] is None
         assert len(data["specs"]) == 1
 
+    def test_plan_status_out_from_records_with_multi_spec_ordering(self):
+        """Test PlanStatusOut.from_records maintains spec_index ordering."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=5,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        # Create specs in random order but with spec_index set
+        spec_records = [
+            SpecRecord(
+                spec_index=2,
+                purpose="Spec 2",
+                vision="Vision 2",
+                status="blocked",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=0,
+                purpose="Spec 0",
+                vision="Vision 0",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=4,
+                purpose="Spec 4",
+                vision="Vision 4",
+                status="blocked",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=1,
+                purpose="Spec 1",
+                vision="Vision 1",
+                status="running",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=3,
+                purpose="Spec 3",
+                vision="Vision 3",
+                status="blocked",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        # Verify specs are returned in the order provided (caller should order them)
+        assert len(status_out.specs) == 5
+        assert status_out.specs[0].spec_index == 2
+        assert status_out.specs[1].spec_index == 0
+        assert status_out.specs[2].spec_index == 4
+        assert status_out.specs[3].spec_index == 1
+        assert status_out.specs[4].spec_index == 3
+
+    def test_plan_status_out_from_records_completed_specs_accuracy(self):
+        """Test PlanStatusOut.from_records accurately counts completed specs."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=7,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        # Mix of finished, running, blocked, and failed specs
+        spec_records = [
+            SpecRecord(
+                spec_index=i,
+                purpose=f"Spec {i}",
+                vision=f"Vision {i}",
+                status=(
+                    "finished"
+                    if i < 3
+                    else ("running" if i == 3 else ("failed" if i == 4 else "blocked"))
+                ),
+                created_at=now,
+                updated_at=now,
+            )
+            for i in range(7)
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        # Only specs 0, 1, 2 are finished
+        assert status_out.completed_specs == 3
+        assert status_out.total_specs == 7
+
+    def test_plan_status_out_from_records_current_spec_index_derivation(self):
+        """Test PlanStatusOut.from_records finds first running spec for current_spec_index."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=4,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        # Multiple running specs - should return first one
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Spec 0",
+                vision="Vision 0",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=1,
+                purpose="Spec 1",
+                vision="Vision 1",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=2,
+                purpose="Spec 2",
+                vision="Vision 2",
+                status="running",  # First running spec
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=3,
+                purpose="Spec 3",
+                vision="Vision 3",
+                status="blocked",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        # Should find spec 2 as current
+        assert status_out.current_spec_index == 2
+
+    def test_plan_status_out_from_records_include_stage_toggle_true(self):
+        """Test PlanStatusOut.from_records includes stage when include_stage=True."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=2,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Spec 0",
+                vision="Vision 0",
+                status="running",
+                current_stage="implementation",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=1,
+                purpose="Spec 1",
+                vision="Vision 1",
+                status="blocked",
+                current_stage=None,
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records, include_stage=True)
+
+        # Stage values should be included
+        assert status_out.specs[0].stage == "implementation"
+        assert status_out.specs[1].stage is None
+
+    def test_plan_status_out_from_records_include_stage_toggle_false(self):
+        """Test PlanStatusOut.from_records omits stage when include_stage=False."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=2,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Spec 0",
+                vision="Vision 0",
+                status="running",
+                current_stage="implementation",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=1,
+                purpose="Spec 1",
+                vision="Vision 1",
+                status="blocked",
+                current_stage="reviewing",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records, include_stage=False)
+
+        # Stage values should be None even though current_stage is set
+        assert status_out.specs[0].stage is None
+        assert status_out.specs[1].stage is None
+
+    def test_plan_status_out_from_records_no_running_spec(self):
+        """Test PlanStatusOut.from_records sets current_spec_index to None when no running spec."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="finished",
+            created_at=now,
+            updated_at=now,
+            total_specs=3,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        # All specs finished or blocked, no running spec
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Spec 0",
+                vision="Vision 0",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=1,
+                purpose="Spec 1",
+                vision="Vision 1",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=2,
+                purpose="Spec 2",
+                vision="Vision 2",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        # No running spec, so current_spec_index should be None
+        assert status_out.current_spec_index is None
+
+    def test_plan_status_out_from_records_all_specs_finished(self):
+        """Test PlanStatusOut.from_records with all specs finished."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="finished",
+            created_at=now,
+            updated_at=now,
+            total_specs=3,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        spec_records = [
+            SpecRecord(
+                spec_index=i,
+                purpose=f"Spec {i}",
+                vision=f"Vision {i}",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            )
+            for i in range(3)
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        # All specs are finished
+        assert status_out.completed_specs == 3
+        assert status_out.total_specs == 3
+        assert status_out.current_spec_index is None
+        assert status_out.overall_status == "finished"
+
+    def test_plan_status_out_from_records_empty_specs_list(self):
+        """Test PlanStatusOut.from_records with empty specs list."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=0,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        status_out = PlanStatusOut.from_records(plan_record, [])
+
+        # Empty specs
+        assert status_out.total_specs == 0
+        assert status_out.completed_specs == 0
+        assert status_out.current_spec_index is None
+        assert len(status_out.specs) == 0
+
+    def test_plan_status_out_from_records_stage_propagation_from_pubsub(self):
+        """Test that stage data from Pub/Sub updates is preserved in response."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=3,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        # Simulate specs with current_stage from Pub/Sub updates
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Spec 0",
+                vision="Vision 0",
+                status="finished",
+                current_stage="completed",  # From Pub/Sub
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=1,
+                purpose="Spec 1",
+                vision="Vision 1",
+                status="running",
+                current_stage="implementation",  # From Pub/Sub
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=2,
+                purpose="Spec 2",
+                vision="Vision 2",
+                status="blocked",
+                current_stage=None,  # No stage yet
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records, include_stage=True)
+
+        # Stage data should be propagated
+        assert status_out.specs[0].stage == "completed"
+        assert status_out.specs[1].stage == "implementation"
+        assert status_out.specs[2].stage is None
+
 
 class TestStatusEnums:
     """Tests for status enums."""
