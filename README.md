@@ -686,6 +686,13 @@ The endpoint implements robust idempotency and ordering guarantees to ensure rel
 - **ERROR Level**: Out-of-order spec finishing, Firestore errors, unexpected failures
 - All logs include structured metadata: `plan_id`, `spec_index`, `status`, `message_id`
 - Use logs to monitor execution flow, diagnose issues, and audit state transitions
+- **Secure Logging Practices**:
+  - Never log sensitive data: tokens, credentials, personal information
+  - The service automatically sanitizes payloads - only snippets are logged
+  - Raw payload snippets in history are truncated to prevent log bloat
+  - Use structured logging (JSON) for easy parsing and filtering
+  - Configure log retention policies to comply with data retention requirements
+  - Monitor logs for authentication failures which may indicate security issues
 
 **Handling Out-of-Order Events:**
 - Out-of-order events are **rejected** and logged as errors
@@ -711,10 +718,21 @@ The endpoint implements robust idempotency and ordering guarantees to ensure rel
 
 **Security Best Practices:**
 - **Token Rotation**: Rotate `PUBSUB_VERIFICATION_TOKEN` regularly (monthly recommended)
-- Update the token in both:
-  1. Environment variable: `PUBSUB_VERIFICATION_TOKEN`
-  2. Pub/Sub subscription: `--push-auth-token-header` configuration
+- **Zero-Downtime Token Rotation Procedure**:
+  1. Generate new token: `NEW_TOKEN=$(openssl rand -base64 32)`
+  2. Store new token in Secret Manager (create new version)
+  3. Deploy service with new token in `PUBSUB_VERIFICATION_TOKEN` (old token still accepted during transition)
+  4. Wait for all service instances to restart with new token (typically 1-2 minutes)
+  5. Update Pub/Sub subscription with new token:
+     ```bash
+     gcloud pubsub subscriptions update spec-status-push \
+       --push-auth-token-header=x-goog-pubsub-verification-token=$NEW_TOKEN
+     ```
+  6. Verify new token is working by checking service logs for successful requests
+  7. Old token is now safely replaced with zero downtime
 - Use strong, randomly generated tokens (min 32 characters)
+- Store tokens in Secret Manager, not in plaintext or shell history
+- Avoid echoing tokens in logs or console output
 - Consider using Pub/Sub IAM authentication instead of shared tokens for production:
   - Configure push subscription with service account authentication
   - Grant `roles/run.invoker` to Pub/Sub service account
@@ -794,10 +812,16 @@ To configure a Pub/Sub push subscription to call this endpoint:
 # 1. Create a Pub/Sub topic
 gcloud pubsub topics create spec-status-updates
 
-# 2. Generate a secure verification token
+# 2. Generate a secure verification token and store in Secret Manager
 TOKEN=$(openssl rand -base64 32)
-echo "Generated token: $TOKEN"
-echo "Set this as PUBSUB_VERIFICATION_TOKEN in your service"
+
+# Store token securely (recommended for production)
+echo -n "$TOKEN" | gcloud secrets create pubsub-verification-token \
+  --data-file=- \
+  --replication-policy=automatic
+
+# For local development, you can retrieve and set the token
+# PUBSUB_VERIFICATION_TOKEN=$(gcloud secrets versions access latest --secret=pubsub-verification-token)
 
 # 3. Create a push subscription with token authentication
 gcloud pubsub subscriptions create spec-status-push \
@@ -846,10 +870,9 @@ gcloud run deploy plan-scheduler \
 # 1. Create dead-letter topic for failed messages
 gcloud pubsub topics create spec-status-dlq
 
-# 2. Create subscription with dead-letter configuration
-gcloud pubsub subscriptions create spec-status-push \
-  --topic=spec-status-updates \
-  --push-endpoint=https://your-service-url/pubsub/spec-status \
+# 2. Update the subscription with dead-letter configuration
+# Note: If subscription doesn't exist yet, use 'create' instead of 'update'
+gcloud pubsub subscriptions update spec-status-push \
   --dead-letter-topic=spec-status-dlq \
   --max-delivery-attempts=5
 ```

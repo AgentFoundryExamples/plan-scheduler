@@ -350,7 +350,7 @@ payload = SpecStatusPayload(
 - `stage` (str, **optional**): Execution stage/phase information for progress tracking (e.g., "analyzing", "implementing", "testing", "reviewing")
 
 **Validation:**
-- `plan_id` must be a non-empty string (UUID format validated at API level)
+- `plan_id` must be a non-empty string. UUID format is validated at the API endpoint level (POST /pubsub/spec-status) which converts the string to UUID and validates format. Invalid UUIDs will cause the endpoint to return 400 Bad Request with validation error details.
 - `spec_index` must be a non-negative integer
 - `status` must match the regex pattern: `^(blocked|running|finished|failed)$`
 - `stage` is optional and can be any string
@@ -580,8 +580,18 @@ failure = SpecStatusPayload(
 )
 # Plan is marked as failed
 
-# Manual intervention: Re-emit status to retry
-# Note: This requires re-creating the spec with status="running" first
+# Manual intervention: An administrator must manually edit the spec's status
+# in Firestore back to "running" before retrying. The Pub/Sub endpoint will
+# reject attempts to transition a "failed" spec back to "running" automatically.
+#
+# Steps for manual retry:
+# 1. Use Firestore console or admin SDK to update spec document:
+#    plans/{plan_id}/specs/{spec_index}
+#    Set status: "running" (was "failed")
+# 2. Optionally update plan document:
+#    plans/{plan_id}
+#    Set overall_status: "running" (was "failed")
+# 3. After manual DB intervention, a new attempt can be tracked:
 retry_attempt = SpecStatusPayload(
     plan_id="550e8400-e29b-41d4-a716-446655440000",
     spec_index=2,
@@ -597,9 +607,10 @@ success = SpecStatusPayload(
 )
 
 # Note: Manual retries require careful orchestration
-# - Cannot transition from "failed" back to "running" automatically
-# - May require manual Firestore updates or admin intervention
-# - Consider implementing a retry endpoint for operational flexibility
+# - Cannot transition from "failed" back to "running" via Pub/Sub
+# - Requires manual Firestore updates by administrator
+# - Consider implementing a dedicated retry endpoint for operational flexibility
+# - Document manual retry procedures in your operations runbook
 ```
 
 **Example 4: Out-of-Order Prevention**
