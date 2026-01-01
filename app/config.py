@@ -63,16 +63,44 @@ class Settings(BaseSettings):
     PUBSUB_VERIFICATION_TOKEN: str = Field(
         default="",
         description=(
-            "Token for verifying Pub/Sub push requests. REQUIRED for security. "
+            "Token for verifying Pub/Sub push requests. "
+            "Used as fallback when OIDC authentication is not configured. "
             "This token should be sent by Pub/Sub in the x-goog-pubsub-verification-token header."
         ),
     )
 
-    PUBSUB_JWT_VERIFICATION_ENABLED: bool = Field(
-        default=False,
+    PUBSUB_OIDC_ENABLED: bool = Field(
+        default=True,
         description=(
-            "Enable JWT verification for Pub/Sub push requests. "
-            "When enabled, verifies JWT tokens in addition to the verification token."
+            "Enable OIDC JWT verification for Pub/Sub push requests. "
+            "When enabled, validates Google-signed JWT tokens from Authorization header. "
+            "Falls back to PUBSUB_VERIFICATION_TOKEN if disabled or when JWT validation fails."
+        ),
+    )
+
+    PUBSUB_EXPECTED_AUDIENCE: str = Field(
+        default="",
+        description=(
+            "Expected audience claim in OIDC JWT tokens from Pub/Sub. "
+            "Typically the Cloud Run service URL. Required when PUBSUB_OIDC_ENABLED is True. "
+            "Example: https://plan-scheduler-abc123-uc.a.run.app"
+        ),
+    )
+
+    PUBSUB_EXPECTED_ISSUER: str = Field(
+        default="https://accounts.google.com",
+        description=(
+            "Expected issuer claim in OIDC JWT tokens from Pub/Sub. "
+            "Default is Google's issuer for service account tokens."
+        ),
+    )
+
+    PUBSUB_SERVICE_ACCOUNT_EMAIL: str = Field(
+        default="",
+        description=(
+            "Expected service account email in JWT subject claim. "
+            "Should match the Pub/Sub push subscription service account. "
+            "Optional but recommended for enhanced security."
         ),
     )
 
@@ -134,14 +162,29 @@ class Settings(BaseSettings):
                 "GCP authentication may fail."
             )
 
-        # Fail fast if PUBSUB_VERIFICATION_TOKEN is unset or empty
-        if not self.PUBSUB_VERIFICATION_TOKEN or not self.PUBSUB_VERIFICATION_TOKEN.strip():
-            raise ValueError(
-                "PUBSUB_VERIFICATION_TOKEN is required but not set or empty. "
-                "The service cannot start without a verification token for "
-                "securing Pub/Sub endpoints. "
-                "Set this environment variable to a secure random token."
-            )
+        # Validate Pub/Sub authentication configuration
+        if self.PUBSUB_OIDC_ENABLED:
+            # When OIDC is enabled, require audience
+            if not self.PUBSUB_EXPECTED_AUDIENCE or not self.PUBSUB_EXPECTED_AUDIENCE.strip():
+                logger.warning(
+                    "PUBSUB_OIDC_ENABLED is True but PUBSUB_EXPECTED_AUDIENCE is not set. "
+                    "OIDC validation will fail. Set PUBSUB_EXPECTED_AUDIENCE to your Cloud Run service URL "
+                    "or disable OIDC by setting PUBSUB_OIDC_ENABLED=False."
+                )
+            # Shared token becomes optional when OIDC is enabled
+            if not self.PUBSUB_VERIFICATION_TOKEN or not self.PUBSUB_VERIFICATION_TOKEN.strip():
+                logger.info(
+                    "PUBSUB_VERIFICATION_TOKEN not set. Relying solely on OIDC authentication. "
+                    "Shared token fallback will not be available."
+                )
+        else:
+            # When OIDC is disabled, require shared token
+            if not self.PUBSUB_VERIFICATION_TOKEN or not self.PUBSUB_VERIFICATION_TOKEN.strip():
+                raise ValueError(
+                    "PUBSUB_VERIFICATION_TOKEN is required when PUBSUB_OIDC_ENABLED is False. "
+                    "The service cannot start without authentication for Pub/Sub endpoints. "
+                    "Set PUBSUB_VERIFICATION_TOKEN or enable OIDC with PUBSUB_OIDC_ENABLED=True."
+                )
 
 
 @lru_cache
