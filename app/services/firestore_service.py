@@ -555,7 +555,8 @@ def process_spec_status_update(
     1. Load plan and target spec within a transaction
     2. Verify ordering (detect out-of-order or stale terminal events)
     3. Check for duplicate messageIds to prevent double-processing
-    4. Append status history entry with timestamp, status, stage, details, correlation_id, messageId, raw snippet
+    4. Append status history entry with timestamp, status, stage, details,
+       correlation_id, messageId, raw snippet
     5. Update spec and plan fields based on status type:
        - "finished": Mark spec finished, advance plan, trigger next spec (terminal)
        - "failed": Mark spec/plan failed, no further triggers (terminal)

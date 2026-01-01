@@ -186,9 +186,7 @@ async def create_plan(plan_in: PlanIn, response: Response) -> PlanCreateResponse
         },
         404: {
             "description": "Plan not found",
-            "content": {
-                "application/json": {"example": {"detail": "Plan not found"}}
-            },
+            "content": {"application/json": {"example": {"detail": "Plan not found"}}},
         },
         500: {
             "description": "Internal server error",
