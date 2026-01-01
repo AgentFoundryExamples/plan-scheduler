@@ -78,9 +78,9 @@ def test_readiness_check_returns_ready(client):
 
 def test_readiness_check_fails_when_firestore_unavailable(client):
     """Test that readiness check returns 503 when Firestore is unavailable."""
-    # Mock get_firestore_client to raise an exception at the import level
-    with patch("app.dependencies.firestore_service.get_client") as mock_client:
-        mock_client.side_effect = Exception("Firestore unavailable")
+    # Mock the direct dependency of the endpoint
+    with patch("app.api.health.get_firestore_client") as mock_get_client:
+        mock_get_client.side_effect = Exception("Firestore unavailable")
 
         response = client.get("/readiness")
 

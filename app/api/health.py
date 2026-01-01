@@ -59,9 +59,7 @@ async def readiness_check(response: Response) -> dict:
     # Quick Firestore connectivity check (fail fast)
     try:
         # Try to get Firestore client - this validates configuration
-        client = get_firestore_client()
-        if client is None:
-            issues.append("Firestore client not initialized")
+        _ = get_firestore_client()
     except Exception as e:
         logger.warning(f"Readiness check: Firestore connectivity issue: {e}")
         issues.append(f"Firestore: {str(e)[:100]}")

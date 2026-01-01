@@ -16,7 +16,20 @@
 import logging
 from unittest.mock import patch
 
+import pytest
+
 from app.main import create_app, setup_logging
+
+
+@pytest.fixture
+def isolated_settings(request):
+    """Fixture to patch environment variables and clear settings cache for a test."""
+    with patch.dict("os.environ", request.param):
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+        yield
+        get_settings.cache_clear()
 
 
 def test_logging_setup_configures_json_format():
@@ -31,99 +44,55 @@ def test_logging_setup_configures_json_format():
     assert handler.level == logging.INFO
 
 
-def test_logging_respects_log_level_setting():
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "DEBUG"}], indirect=True)
+def test_logging_respects_log_level_setting(isolated_settings):
     """Test that logging uses LOG_LEVEL from settings."""
-    with patch.dict("os.environ", {"LOG_LEVEL": "DEBUG"}):
-
-        # Clear the cache to force reload
-        from app.config import get_settings
-
-        get_settings.cache_clear()
-
-        setup_logging()
-        root_logger = logging.getLogger()
-
-        assert root_logger.level == logging.DEBUG
-
-        # Clean up
-        get_settings.cache_clear()
+    setup_logging()
+    root_logger = logging.getLogger()
+    assert root_logger.level == logging.DEBUG
 
 
-def test_logging_handles_invalid_log_level():
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "INVALID_LEVEL"}], indirect=True)
+def test_logging_handles_invalid_log_level(isolated_settings):
     """Test that invalid LOG_LEVEL falls back to INFO with warning."""
-    with patch.dict("os.environ", {"LOG_LEVEL": "INVALID_LEVEL"}):
-        from app.config import get_settings
+    from app.config import get_settings
 
-        get_settings.cache_clear()
-
-        # Should not raise an exception, should fall back to INFO
-        settings = get_settings()
-        assert settings.LOG_LEVEL == "INFO"
-
-        # Clean up
-        get_settings.cache_clear()
+    # Should not raise an exception, should fall back to INFO
+    settings = get_settings()
+    assert settings.LOG_LEVEL == "INFO"
 
 
-def test_logging_normalizes_log_level_case():
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "debug"}], indirect=True)
+def test_logging_normalizes_log_level_case(isolated_settings):
     """Test that LOG_LEVEL is normalized to uppercase."""
-    with patch.dict("os.environ", {"LOG_LEVEL": "debug"}):
-        from app.config import get_settings
+    from app.config import get_settings
 
-        get_settings.cache_clear()
-
-        settings = get_settings()
-        assert settings.LOG_LEVEL == "DEBUG"
-
-        # Clean up
-        get_settings.cache_clear()
+    settings = get_settings()
+    assert settings.LOG_LEVEL == "DEBUG"
 
 
-def test_logging_level_warning():
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "WARNING"}], indirect=True)
+def test_logging_level_warning(isolated_settings):
     """Test that logging level WARNING works."""
-    with patch.dict("os.environ", {"LOG_LEVEL": "WARNING"}):
-        from app.config import get_settings
-
-        get_settings.cache_clear()
-
-        setup_logging()
-        root_logger = logging.getLogger()
-
-        assert root_logger.level == logging.WARNING
-
-        # Clean up
-        get_settings.cache_clear()
+    setup_logging()
+    root_logger = logging.getLogger()
+    assert root_logger.level == logging.WARNING
 
 
-def test_logging_level_error():
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "ERROR"}], indirect=True)
+def test_logging_level_error(isolated_settings):
     """Test that logging level ERROR works."""
-    with patch.dict("os.environ", {"LOG_LEVEL": "ERROR"}):
-        from app.config import get_settings
-
-        get_settings.cache_clear()
-
-        setup_logging()
-        root_logger = logging.getLogger()
-
-        assert root_logger.level == logging.ERROR
-
-        # Clean up
-        get_settings.cache_clear()
+    setup_logging()
+    root_logger = logging.getLogger()
+    assert root_logger.level == logging.ERROR
 
 
-def test_logging_level_critical():
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "CRITICAL"}], indirect=True)
+def test_logging_level_critical(isolated_settings):
     """Test that logging level CRITICAL works."""
-    with patch.dict("os.environ", {"LOG_LEVEL": "CRITICAL"}):
-        from app.config import get_settings
-
-        get_settings.cache_clear()
-
-        setup_logging()
-        root_logger = logging.getLogger()
-
-        assert root_logger.level == logging.CRITICAL
-
-        # Clean up
-        get_settings.cache_clear()
+    setup_logging()
+    root_logger = logging.getLogger()
+    assert root_logger.level == logging.CRITICAL
 
 
 def test_app_factory_multiple_invocations():
