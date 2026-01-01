@@ -14,6 +14,7 @@
 """Plan ingestion API endpoints."""
 
 import logging
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
@@ -196,7 +197,7 @@ async def create_plan(plan_in: PlanIn, response: Response) -> PlanCreateResponse
     },
 )
 async def get_plan_status(
-    plan_id: str,
+    plan_id: UUID,
     include_stage: bool = Query(default=True, description="Include stage field in spec statuses"),
 ) -> PlanStatusOut:
     """
@@ -211,7 +212,7 @@ async def get_plan_status(
     operates on a subcollection with a single sort field.
 
     Args:
-        plan_id: Plan identifier as UUID string
+        plan_id: Plan identifier as UUID
         include_stage: Optional flag to include/exclude stage field (default: true)
 
     Returns:
@@ -221,24 +222,27 @@ async def get_plan_status(
         HTTPException: 404 if plan not found, 500 for server errors
     """
     try:
+        # Convert UUID to string for Firestore queries
+        plan_id_str = str(plan_id)
+
         # Log retrieval attempt
         logger.info(
             "Plan status retrieval request received",
             extra={
-                "plan_id": plan_id,
+                "plan_id": plan_id_str,
                 "include_stage": include_stage,
             },
         )
 
         # Fetch plan and specs from Firestore
         client = get_firestore_client()
-        plan_data, spec_list = get_plan_with_specs(plan_id, client=client)
+        plan_data, spec_list = get_plan_with_specs(plan_id_str, client=client)
 
         # Return 404 if plan not found
         if plan_data is None:
             logger.warning(
                 "Plan not found",
-                extra={"plan_id": plan_id},
+                extra={"plan_id": plan_id_str},
             )
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -255,7 +259,7 @@ async def get_plan_status(
         logger.info(
             "Plan status retrieved successfully",
             extra={
-                "plan_id": plan_id,
+                "plan_id": plan_id_str,
                 "overall_status": plan_status.overall_status,
                 "total_specs": plan_status.total_specs,
                 "completed_specs": plan_status.completed_specs,
@@ -274,7 +278,7 @@ async def get_plan_status(
         logger.error(
             "Plan status retrieval failed due to Firestore error",
             extra={
-                "plan_id": plan_id,
+                "plan_id": str(plan_id),
                 "error": str(e),
             },
             exc_info=True,
@@ -289,7 +293,7 @@ async def get_plan_status(
         logger.error(
             "Plan status retrieval failed due to unexpected error",
             extra={
-                "plan_id": plan_id,
+                "plan_id": str(plan_id),
                 "error": str(e),
             },
             exc_info=True,

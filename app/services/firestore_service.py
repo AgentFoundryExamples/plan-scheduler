@@ -900,12 +900,8 @@ def get_plan_with_specs(
         specs_query = specs_ref.order_by("spec_index", direction=firestore.Query.ASCENDING)
         spec_docs = list(specs_query.stream())
 
-        spec_list = []
-        for spec_doc in spec_docs:
-            if spec_doc.exists:
-                spec_data = spec_doc.to_dict()
-                if spec_data:
-                    spec_list.append(spec_data)
+        # Extract spec data from documents (filtering ensures we only get valid specs)
+        spec_list = [spec_doc.to_dict() for spec_doc in spec_docs if spec_doc.to_dict()]
 
         logger.info(
             f"Fetched plan {plan_id} with {len(spec_list)} specs",
