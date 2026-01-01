@@ -1,4 +1,4 @@
-.PHONY: help install test lint format docker-build docker-run docker-stop clean pre-commit-install
+.PHONY: help install test lint format docker-build docker-run docker-run-test docker-stop clean pre-commit-install
 
 # Default target - show help
 help:
@@ -15,8 +15,10 @@ help:
 	@echo "Docker commands:"
 	@echo "  make docker-build        Build Docker image"
 	@echo "  make docker-run          Run Docker container (requires .env file)"
+	@echo "  make docker-run-test     Run Docker container for local testing (no credentials required)"
 	@echo "  make docker-stop         Stop running Docker container"
 	@echo "  make docker-logs         Show Docker container logs"
+	@echo "  make docker-test         Build and run container for testing, then show logs"
 	@echo ""
 	@echo "Pre-commit hooks (optional):"
 	@echo "  make pre-commit-install  Install pre-commit hooks"
@@ -86,6 +88,32 @@ docker-run:
 	@echo "Use 'make docker-logs' to view logs"
 	@echo "Use 'make docker-stop' to stop the container"
 
+# Run Docker container for local testing without credentials
+# This starts the container with minimal configuration for quick testing
+docker-run-test:
+	@echo "Running Docker container for local testing..."
+	@echo "Note: This runs without Firestore credentials - some features will log warnings"
+	docker run -d \
+		--name plan-scheduler \
+		-e PORT=8080 \
+		-e LOG_LEVEL=INFO \
+		-e WORKERS=1 \
+		-e SERVICE_NAME=plan-scheduler \
+		-e FIRESTORE_PROJECT_ID=test-project \
+		-e PUBSUB_OIDC_ENABLED=false \
+		-e PUBSUB_VERIFICATION_TOKEN=test-token \
+		-p 8080:8080 \
+		plan-scheduler:latest
+	@echo ""
+	@echo "Container started successfully!"
+	@echo "Access the service at: http://localhost:8080"
+	@echo "API Documentation: http://localhost:8080/docs"
+	@echo "Health check: http://localhost:8080/health"
+	@echo ""
+	@echo "Test with: curl http://localhost:8080/health"
+	@echo "Use 'make docker-logs' to view logs"
+	@echo "Use 'make docker-stop' to stop the container"
+
 # Stop Docker container
 docker-stop:
 	@echo "Stopping Docker container..."
@@ -95,6 +123,25 @@ docker-stop:
 # Show Docker container logs
 docker-logs:
 	docker logs -f plan-scheduler
+
+# Build and test Docker container locally
+# This is a convenience target that builds, runs, and shows logs
+docker-test: docker-stop docker-build docker-run-test
+	@echo ""
+	@echo "Waiting 3 seconds for container to start..."
+	@sleep 3
+	@echo ""
+	@echo "Testing health endpoint..."
+	@curl -s http://localhost:8080/health || echo "Health check failed!"
+	@echo ""
+	@echo ""
+	@echo "Checking container user (should be 'appuser')..."
+	@docker exec plan-scheduler whoami || echo "User check failed!"
+	@echo ""
+	@echo "Container logs:"
+	@docker logs plan-scheduler
+	@echo ""
+	@echo "Container is running. Use 'make docker-stop' to stop it."
 
 # Install pre-commit hooks (optional)
 pre-commit-install:

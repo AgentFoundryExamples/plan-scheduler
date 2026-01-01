@@ -4,7 +4,7 @@ FROM python:3.12-slim as builder
 
 WORKDIR /app
 
-# Install poetry
+# Install poetry with pinned version for reproducible builds
 RUN pip install --no-cache-dir poetry==1.8.2
 
 # Copy dependency files
@@ -23,6 +23,11 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
+# Create non-root user and group with specific UID/GID for security
+# Using UID/GID 1000 as a common non-privileged user ID
+RUN groupadd -r -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser -s /sbin/nologin -c "Application user" appuser
+
 # Copy requirements.txt from the builder stage
 COPY --from=builder /app/requirements.txt ./
 
@@ -32,17 +37,29 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app ./app
 
+# Set ownership of application directory to non-root user
+# This ensures the application can read its code and write temp files if needed
+RUN chown -R appuser:appuser /app
+
 # Expose port 8080 (Cloud Run default)
 EXPOSE 8080
 
-# Set environment variable for port (Cloud Run will override this)
-ENV PORT=8080
+# Set environment variables for Cloud Run compatibility
+# PORT: Cloud Run will override this with the actual port assignment
+# LOG_LEVEL: Controls logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+# WORKERS: Number of uvicorn worker processes (1-2 recommended for Cloud Run)
+ENV PORT=8080 \
+    LOG_LEVEL=INFO \
+    WORKERS=1
 
-# Health check (optional but recommended for Cloud Run)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')" || exit 1
+# Switch to non-root user for security
+# All subsequent commands and the application will run as this user
+USER appuser
 
 # Run the application with uvicorn
-# --host 0.0.0.0 allows external connections (required for Cloud Run)
-# --port uses the PORT environment variable (Cloud Run compatibility)
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# --host 0.0.0.0: Binds to all interfaces (required for Cloud Run)
+# --port ${PORT}: Uses PORT environment variable (Cloud Run injects this)
+# --workers ${WORKERS}: Configurable worker count (default 1 for Cloud Run)
+# --log-level: Uses LOG_LEVEL environment variable for control
+# Note: Cloud Run health checks use the /health endpoint directly, no Docker HEALTHCHECK needed
+CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers ${WORKERS} --log-level ${LOG_LEVEL}"

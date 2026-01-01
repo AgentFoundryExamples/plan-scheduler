@@ -183,19 +183,53 @@ make docker-build
 docker build -t plan-scheduler:latest .
 ```
 
-The Dockerfile:
-- Uses multi-stage build for smaller final image
-- Builder stage installs Poetry and exports dependencies to requirements.txt
-- Final stage uses Python 3.12 slim base image
-- Installs dependencies from requirements.txt (no Poetry in final image)
-- Copies application code
-- Exposes port 8080 (Cloud Run default)
-- Runs uvicorn with Cloud Run compatible settings (host 0.0.0.0)
-- Includes health check for container orchestration
+The Dockerfile is optimized for Cloud Run with the following features:
+- **Multi-stage build** for smaller final image (~200MB)
+- **Non-root execution**: Runs as dedicated `appuser` (UID 1000) for security
+- **Builder stage**: Installs Poetry and exports dependencies to requirements.txt
+- **Final stage**: Uses Python 3.12 slim base image with only runtime dependencies
+- **Security**: No Poetry in final image, deterministic user permissions
+- **Cloud Run ready**: Exposes port 8080, binds to 0.0.0.0, respects PORT/WORKERS/LOG_LEVEL env vars
+- **Efficient caching**: Dependency layers cached separately from application code
 
-### Run Docker Container Locally
+### Quick Local Testing (No Credentials Required)
 
-**Prerequisites**: Create a `.env` file from `.env.example` with your configuration.
+The fastest way to verify the container works locally without any GCP credentials:
+
+```bash
+# Build and run container with test configuration
+make docker-test
+
+# This will:
+# 1. Build the Docker image
+# 2. Start container with test environment variables
+# 3. Verify health endpoint responds
+# 4. Check container runs as non-root user
+# 5. Display container logs
+```
+
+**Or manually:**
+
+```bash
+# Build image
+make docker-build
+
+# Run with minimal test configuration
+make docker-run-test
+
+# Test the container
+curl http://localhost:8080/health
+curl http://localhost:8080/docs
+
+# Stop container
+make docker-stop
+```
+
+The test container runs without Firestore credentials and will log warnings about missing configuration, but the service will start successfully and serve HTTP requests.
+
+### Run Docker Container Locally (Production-like)
+
+**Prerequisites**: Create a `.env` file from `.env.example` with your GCP configuration.
 
 ```bash
 # Using Makefile (automatically mounts credentials file if specified)
@@ -208,7 +242,7 @@ docker run -d \
   -p 8080:8080 \
   plan-scheduler:latest
 
-# If you need to mount a credentials file
+# If you need to mount a credentials file manually
 docker run -d \
   --name plan-scheduler \
   --env-file .env \
@@ -220,6 +254,7 @@ docker run -d \
 The container will:
 - Load environment variables from `.env` file
 - Automatically mount credentials file if path is found in `.env` (when using Makefile)
+- Run as non-root user `appuser` (UID 1000)
 - Expose the service on http://localhost:8080
 - Run in detached mode (background)
 
@@ -239,16 +274,65 @@ make docker-stop
 
 # Test health endpoint
 curl http://localhost:8080/health
+
+# Check API documentation
+open http://localhost:8080/docs  # or visit in browser
 ```
 
 ### Docker Environment Variables
 
-When running the Docker container, you must provide:
-- `FIRESTORE_PROJECT_ID` - Your GCP project ID
-- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account key (mount as volume)
-- `PUBSUB_VERIFICATION_TOKEN` - Verification token for Pub/Sub
+The container supports the following environment variables with sensible defaults:
 
-**For Cloud Run**, `GOOGLE_APPLICATION_CREDENTIALS` is not needed as Cloud Run uses workload identity.
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `PORT` | `8080` | Port to bind the service | No |
+| `WORKERS` | `1` | Number of uvicorn worker processes (1-2 recommended for Cloud Run) | No |
+| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) | No |
+| `FIRESTORE_PROJECT_ID` | `""` | GCP project ID for Firestore | Yes* |
+| `GOOGLE_APPLICATION_CREDENTIALS` | `""` | Path to service account key (mount as volume) | Yes* |
+| `PUBSUB_VERIFICATION_TOKEN` | `""` | Verification token for Pub/Sub (or use OIDC) | Yes* |
+| `PUBSUB_OIDC_ENABLED` | `true` | Enable OIDC authentication for Pub/Sub | No |
+
+\* Required for production use with Firestore/Pub/Sub. For local testing without external services, use `make docker-run-test`.
+
+**Cloud Run Considerations:**
+- `GOOGLE_APPLICATION_CREDENTIALS` is **not needed** on Cloud Run (uses workload identity)
+- Cloud Run automatically injects `PORT` (typically 8080)
+- Use `WORKERS=1` or `WORKERS=2` for Cloud Run (horizontal scaling via container instances)
+- Higher worker counts increase memory usage; Cloud Run scales by adding container instances
+
+### Testing Container with Different Configurations
+
+```bash
+# Test with custom port
+docker run -d --name plan-scheduler -e PORT=3000 -p 3000:3000 \
+  -e PUBSUB_OIDC_ENABLED=false -e PUBSUB_VERIFICATION_TOKEN=test \
+  plan-scheduler:latest
+
+# Test with multiple workers (not recommended for Cloud Run, but useful for load testing)
+docker run -d --name plan-scheduler -e WORKERS=2 -p 8080:8080 \
+  -e PUBSUB_OIDC_ENABLED=false -e PUBSUB_VERIFICATION_TOKEN=test \
+  plan-scheduler:latest
+
+# Test with debug logging
+docker run -d --name plan-scheduler -e LOG_LEVEL=DEBUG -p 8080:8080 \
+  -e PUBSUB_OIDC_ENABLED=false -e PUBSUB_VERIFICATION_TOKEN=test \
+  plan-scheduler:latest
+
+# Verify non-root execution
+docker exec plan-scheduler whoami  # Should output: appuser
+docker exec plan-scheduler id      # Should show uid=1000(appuser) gid=1000(appuser)
+```
+
+### Security Features
+
+The Docker image implements several security best practices:
+
+1. **Non-root User**: Container runs as `appuser` (UID 1000, GID 1000) by default
+2. **Minimal Base**: Uses `python:3.12-slim` with only necessary packages
+3. **Read-only Credentials**: Credentials mounted as read-only volumes
+4. **No Secrets in Image**: All sensitive data provided via environment variables
+5. **Deterministic Build**: Pinned Poetry version and locked dependencies
 
 ## Pre-commit Hooks (Optional)
 
@@ -1607,7 +1691,7 @@ For full spec details, use the appropriate spec detail endpoint (if available) o
 
 ## Cloud Run Deployment
 
-This service is designed to run on Google Cloud Run. The Dockerfile and application configuration are optimized for Cloud Run deployment.
+This service is designed to run on Google Cloud Run. The Dockerfile and application configuration are optimized for Cloud Run deployment with security best practices.
 
 ### Cloud Run Features
 
@@ -1616,6 +1700,19 @@ This service is designed to run on Google Cloud Run. The Dockerfile and applicat
 3. **Health Checks**: Available at `/health` endpoint for container health monitoring
 4. **Graceful Shutdown**: Handles startup and shutdown signals properly
 5. **Workload Identity**: Uses Cloud Run's built-in workload identity for GCP authentication (no service account key needed)
+6. **Non-root Execution**: Container runs as `appuser` (UID 1000) for enhanced security
+7. **Configurable Workers**: Supports 1-2 uvicorn workers via `WORKERS` env var (Cloud Run scales horizontally)
+8. **Environment-based Configuration**: All runtime settings configurable via environment variables
+
+### Container Image Specifications
+
+The production Docker image is optimized for Cloud Run:
+- **Base Image**: `python:3.12-slim` (~200MB final size)
+- **User**: Runs as non-root `appuser` (UID 1000, GID 1000)
+- **Exposed Port**: 8080 (configurable via `PORT` env var)
+- **Default Workers**: 1 (configurable via `WORKERS` env var, recommend 1-2 for Cloud Run)
+- **Logging**: JSON-structured logs to stdout (Cloud Run compatible)
+- **Health Endpoint**: `/health` returns 200 OK when service is ready
 
 ### Deployment Steps
 
@@ -1635,14 +1732,16 @@ docker build -t gcr.io/${PROJECT_ID}/plan-scheduler:latest .
 # Push to Google Container Registry
 docker push gcr.io/${PROJECT_ID}/plan-scheduler:latest
 
-# Or use Cloud Build to build directly in GCP
+# Or use Cloud Build to build directly in GCP (recommended)
 gcloud builds submit --tag gcr.io/${PROJECT_ID}/plan-scheduler:latest
 ```
 
 #### 2. Deploy to Cloud Run
 
+**Basic Deployment (with shared token authentication):**
+
 ```bash
-# Deploy the service
+# Deploy the service with minimal configuration
 gcloud run deploy plan-scheduler \
   --image gcr.io/${PROJECT_ID}/plan-scheduler:latest \
   --region ${REGION} \
@@ -1650,8 +1749,34 @@ gcloud run deploy plan-scheduler \
   --allow-unauthenticated \
   --set-env-vars FIRESTORE_PROJECT_ID=${PROJECT_ID} \
   --set-env-vars SERVICE_NAME=plan-scheduler \
+  --set-env-vars WORKERS=1 \
+  --set-env-vars LOG_LEVEL=INFO \
   --set-env-vars PUBSUB_VERIFICATION_TOKEN=your-secure-token
 ```
+
+**Production Deployment (with OIDC authentication - recommended):**
+
+```bash
+# Deploy with OIDC configuration for enhanced security
+gcloud run deploy plan-scheduler \
+  --image gcr.io/${PROJECT_ID}/plan-scheduler:latest \
+  --region ${REGION} \
+  --platform managed \
+  --no-allow-unauthenticated \
+  --set-env-vars FIRESTORE_PROJECT_ID=${PROJECT_ID} \
+  --set-env-vars SERVICE_NAME=plan-scheduler \
+  --set-env-vars WORKERS=1 \
+  --set-env-vars LOG_LEVEL=INFO \
+  --set-env-vars PUBSUB_OIDC_ENABLED=true \
+  --set-env-vars PUBSUB_EXPECTED_AUDIENCE=https://plan-scheduler-${PROJECT_ID}.a.run.app \
+  --set-env-vars PUBSUB_EXPECTED_ISSUER=https://accounts.google.com \
+  --memory 512Mi \
+  --cpu 1 \
+  --min-instances 0 \
+  --max-instances 10
+```
+
+**Note**: Cloud Run automatically injects the `PORT` environment variable, so you don't need to set it.
 
 #### 3. Configure Environment Variables
 
