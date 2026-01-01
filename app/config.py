@@ -106,10 +106,13 @@ class Settings(BaseSettings):
         normalized = v.upper().strip()
 
         if normalized not in valid_levels:
-            logger = logging.getLogger(__name__)
-            logger.warning(
-                f"Invalid LOG_LEVEL '{v}' provided. Must be one of {valid_levels}. "
-                f"Falling back to 'INFO'."
+            # Use print for validation warnings since logging may not be configured yet
+            import sys
+
+            print(
+                f"WARNING: Invalid LOG_LEVEL '{v}' provided. "
+                f"Must be one of {valid_levels}. Falling back to 'INFO'.",
+                file=sys.stderr,
             )
             return "INFO"
 

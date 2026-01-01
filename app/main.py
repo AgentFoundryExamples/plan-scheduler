@@ -13,6 +13,7 @@
 # limitations under the License.
 """FastAPI application factory and configuration."""
 
+import contextvars
 import logging
 import sys
 import uuid
@@ -24,6 +25,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api import health, plans, pubsub
 from app.config import get_settings
+
+# Context variable for request ID
+request_id_ctx_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_id", default=""
+)
 
 
 class RequestCorrelationMiddleware(BaseHTTPMiddleware):
@@ -42,15 +48,8 @@ class RequestCorrelationMiddleware(BaseHTTPMiddleware):
         # Store in request state for access in route handlers
         request.state.request_id = request_id
 
-        # Add to logging context
-        old_factory = logging.getLogRecordFactory()
-
-        def record_factory(*args, **kwargs):
-            record = old_factory(*args, **kwargs)
-            record.request_id = request_id
-            return record
-
-        logging.setLogRecordFactory(record_factory)
+        # Set context variable for thread-safe logging context
+        token = request_id_ctx_var.set(request_id)
 
         try:
             response = await call_next(request)
@@ -58,8 +57,8 @@ class RequestCorrelationMiddleware(BaseHTTPMiddleware):
             response.headers["X-Request-ID"] = request_id
             return response
         finally:
-            # Restore original factory
-            logging.setLogRecordFactory(old_factory)
+            # Reset context variable
+            request_id_ctx_var.reset(token)
 
 
 def setup_logging() -> None:
@@ -83,9 +82,10 @@ def setup_logging() -> None:
             """Add custom fields to log records."""
             super().add_fields(log_record, record, message_dict)
             log_record["service"] = settings.SERVICE_NAME
-            # Add request_id if available
-            if hasattr(record, "request_id"):
-                log_record["request_id"] = record.request_id
+            # Add request_id from context variable if available
+            request_id = request_id_ctx_var.get("")
+            if request_id:
+                log_record["request_id"] = request_id
 
         def format(self, record):
             """Format log record, handling unicode and binary payloads gracefully."""

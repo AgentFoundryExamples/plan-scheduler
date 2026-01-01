@@ -17,6 +17,8 @@ import logging
 
 from fastapi import APIRouter, Response, status
 
+from app.dependencies import get_firestore_client
+
 router = APIRouter(tags=["health"])
 logger = logging.getLogger(__name__)
 
@@ -57,8 +59,6 @@ async def readiness_check(response: Response) -> dict:
     # Quick Firestore connectivity check (fail fast)
     try:
         # Try to get Firestore client - this validates configuration
-        from app.dependencies import get_firestore_client
-
         client = get_firestore_client()
         if client is None:
             issues.append("Firestore client not initialized")
