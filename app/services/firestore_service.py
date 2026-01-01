@@ -721,8 +721,9 @@ def process_spec_status_update(
                 return
 
         # Step 5: Create history entry with all fields
+        # Use provided timestamp if available, otherwise use current time
         history_entry = {
-            "timestamp": now.isoformat(),
+            "timestamp": timestamp or now.isoformat(),
             "received_status": status,
             "stage": stage,
             "details": details,
