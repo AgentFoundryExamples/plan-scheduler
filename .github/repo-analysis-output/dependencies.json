@@ -407,6 +407,21 @@
           "pytest"
         ]
       }
+    },
+    {
+      "id": "tests/test_unified_pubsub_handling.py",
+      "path": "tests/test_unified_pubsub_handling.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "unittest.mock.MagicMock",
+          "unittest.mock.patch",
+          "uuid"
+        ],
+        "third-party": [
+          "pytest"
+        ]
+      }
     }
   ],
   "edges": [
@@ -580,6 +595,10 @@
     },
     {
       "source": "tests/test_spec_status_update.py",
+      "target": "app/services/firestore_service.py"
+    },
+    {
+      "source": "tests/test_unified_pubsub_handling.py",
       "target": "app/services/firestore_service.py"
     }
   ],

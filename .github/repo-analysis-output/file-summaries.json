@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "total_files": 27,
+  "total_files": 28,
   "files": [
     {
       "schema_version": "2.0",
@@ -137,8 +137,8 @@
       "summary": "Python module for plan",
       "summary_text": "Python module for plan",
       "metrics": {
-        "size_bytes": 17158,
-        "loc": 374,
+        "size_bytes": 17551,
+        "loc": 383,
         "todo_count": 0
       }
     },
@@ -193,8 +193,8 @@
       "summary": "Python module for firestore service",
       "summary_text": "Python module for firestore service",
       "metrics": {
-        "size_bytes": 37567,
-        "loc": 697,
+        "size_bytes": 40861,
+        "loc": 760,
         "todo_count": 0
       }
     },
@@ -377,6 +377,20 @@
       "metrics": {
         "size_bytes": 7845,
         "loc": 147,
+        "todo_count": 0
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "path": "tests/test_unified_pubsub_handling.py",
+      "language": "Python",
+      "role": "test",
+      "role_justification": "filename starts with 'test_'",
+      "summary": "Python test file (role: test)",
+      "summary_text": "Python test file (role: test)",
+      "metrics": {
+        "size_bytes": 24118,
+        "loc": 504,
         "todo_count": 0
       }
     }

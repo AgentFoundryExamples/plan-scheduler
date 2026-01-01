@@ -4,7 +4,7 @@ Heuristic summaries of source files based on filenames, extensions, and paths.
 
 Schema Version: 2.0
 
-Total files: 27
+Total files: 28
 
 ## app/__init__.py
 **Language:** Python  
@@ -92,8 +92,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for plan  
-**Size:** 16.76 KB  
-**LOC:** 374  
+**Size:** 17.14 KB  
+**LOC:** 383  
 **TODOs/FIXMEs:** 0  
 
 ## app/models/pubsub.py
@@ -128,8 +128,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for firestore service  
-**Size:** 36.69 KB  
-**LOC:** 697  
+**Size:** 39.90 KB  
+**LOC:** 760  
 **TODOs/FIXMEs:** 0  
 
 ## tests/__init__.py
@@ -247,4 +247,13 @@ Total files: 27
 **Summary:** Python test file (role: test)  
 **Size:** 7.66 KB  
 **LOC:** 147  
+**TODOs/FIXMEs:** 0  
+
+## tests/test_unified_pubsub_handling.py
+**Language:** Python  
+**Role:** test  
+**Role Justification:** filename starts with 'test_'  
+**Summary:** Python test file (role: test)  
+**Size:** 23.55 KB  
+**LOC:** 504  
 **TODOs/FIXMEs:** 0  

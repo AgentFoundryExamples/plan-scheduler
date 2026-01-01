@@ -47,7 +47,8 @@
   ├── test_plans_api.py
   ├── test_pubsub_api.py
   ├── test_pubsub_models.py
-  └── test_spec_status_update.py
+  ├── test_spec_status_update.py
+  └── test_unified_pubsub_handling.py
 ├── .env.example
 ├── .gitignore
 ├── .pre-commit-config.yaml

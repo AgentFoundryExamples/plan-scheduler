@@ -209,6 +209,10 @@
         {
           "type": "file",
           "name": "test_spec_status_update.py"
+        },
+        {
+          "type": "file",
+          "name": "test_unified_pubsub_handling.py"
         }
       ]
     },
