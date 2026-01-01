@@ -35,8 +35,15 @@ export SERVICE_URL=http://localhost:8080
 # Cloud Run
 export SERVICE_URL=https://plan-scheduler-abc123-uc.a.run.app
 
-# For Pub/Sub testing
-export VERIFICATION_TOKEN=your-verification-token
+# For Pub/Sub testing - Generate a secure token or retrieve from Secret Manager
+# Option 1: Generate new token for testing
+export VERIFICATION_TOKEN=$(openssl rand -base64 32)
+
+# Option 2: Retrieve from Secret Manager (Cloud Run)
+export VERIFICATION_TOKEN=$(gcloud secrets versions access latest --secret=pubsub-verification-token)
+
+# Option 3: Use token from .env file (local development)
+export VERIFICATION_TOKEN=$(grep PUBSUB_VERIFICATION_TOKEN .env | cut -d '=' -f2)
 ```
 
 ## Test Environment Setup
