@@ -10,13 +10,27 @@ WORKERS="${WORKERS:-1}"
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
 
 # Validate PORT is a number between 1 and 65535
-if ! echo "$PORT" | grep -qE '^[0-9]+$' || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
-    echo "Error: PORT must be a number between 1 and 65535, got: ${PORT}" >&2
+# Using POSIX-compliant pattern matching instead of grep
+case "$PORT" in
+    ''|*[!0-9]*)
+        echo "Error: PORT must be a number, got: ${PORT}" >&2
+        exit 1
+        ;;
+esac
+if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+    echo "Error: PORT must be between 1 and 65535, got: ${PORT}" >&2
     exit 1
 fi
 
 # Validate WORKERS is a positive integer
-if ! echo "$WORKERS" | grep -qE '^[0-9]+$' || [ "$WORKERS" -lt 1 ]; then
+# Using POSIX-compliant pattern matching instead of grep
+case "$WORKERS" in
+    ''|*[!0-9]*)
+        echo "Error: WORKERS must be a positive integer, got: ${WORKERS}" >&2
+        exit 1
+        ;;
+esac
+if [ "$WORKERS" -lt 1 ]; then
     echo "Error: WORKERS must be a positive integer, got: ${WORKERS}" >&2
     exit 1
 fi

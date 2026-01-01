@@ -40,16 +40,24 @@ WORKDIR /app
 
 # Create non-root user and group with configurable UID/GID for security
 # Using default UID/GID 1000, but configurable via build args
-# Check if UID/GID already exist before creating to avoid conflicts
-RUN if ! getent group ${APP_GID} >/dev/null 2>&1; then \
-        groupadd -r -g ${APP_GID} appuser; \
-    elif [ "$(getent group ${APP_GID} | cut -d: -f1)" != "appuser" ]; then \
-        echo "Warning: GID ${APP_GID} already exists with a different name, using existing group"; \
+# Fail explicitly if UID/GID conflicts exist to prevent permission issues
+RUN if getent group appuser >/dev/null 2>&1 && [ "$(getent group appuser | cut -d: -f3)" != "${APP_GID}" ]; then \
+        echo "Error: Group 'appuser' already exists with a different GID. Please choose a different APP_GID." >&2; \
+        exit 1; \
+    elif getent group "${APP_GID}" >/dev/null 2>&1 && [ "$(getent group "${APP_GID}" | cut -d: -f1)" != "appuser" ]; then \
+        echo "Error: GID ${APP_GID} is already in use by another group. Please choose a different APP_GID." >&2; \
+        exit 1; \
+    else \
+        groupadd -r -g "${APP_GID}" appuser 2>/dev/null || true; \
     fi && \
-    if ! getent passwd ${APP_UID} >/dev/null 2>&1; then \
-        useradd -r -u ${APP_UID} -g ${APP_GID} -s /sbin/nologin -c "Application user" appuser; \
-    elif [ "$(getent passwd ${APP_UID} | cut -d: -f1)" != "appuser" ]; then \
-        echo "Warning: UID ${APP_UID} already exists with a different name, using existing user"; \
+    if getent passwd appuser >/dev/null 2>&1 && [ "$(getent passwd appuser | cut -d: -f3)" != "${APP_UID}" ]; then \
+        echo "Error: User 'appuser' already exists with a different UID. Please choose a different APP_UID." >&2; \
+        exit 1; \
+    elif getent passwd "${APP_UID}" >/dev/null 2>&1 && [ "$(getent passwd "${APP_UID}" | cut -d: -f1)" != "appuser" ]; then \
+        echo "Error: UID ${APP_UID} is already in use by another user. Please choose a different APP_UID." >&2; \
+        exit 1; \
+    else \
+        useradd -r -u "${APP_UID}" -g "${APP_GID}" -s /sbin/nologin -c "Application user" appuser 2>/dev/null || true; \
     fi
 
 # Copy requirements.txt from the builder stage
