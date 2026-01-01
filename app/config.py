@@ -16,7 +16,7 @@
 import logging
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +41,24 @@ class Settings(BaseSettings):
         default="plan-scheduler", description="Name of the service for logging"
     )
 
+    # Logging configuration
+    LOG_LEVEL: str = Field(
+        default="INFO",
+        description=(
+            "Logging level for the application. "
+            "Valid values: DEBUG, INFO, WARNING, ERROR, CRITICAL. "
+            "Invalid values will fall back to INFO with a warning."
+        ),
+    )
+
+    # Runtime configuration for Cloud Run
+    WORKERS: int = Field(
+        default=1,
+        description="Number of uvicorn worker processes. Defaults to 1 for Cloud Run.",
+        ge=1,
+        le=16,
+    )
+
     # Pub/Sub configuration
     PUBSUB_VERIFICATION_TOKEN: str = Field(
         default="",
@@ -62,6 +80,43 @@ class Settings(BaseSettings):
     EXECUTION_ENABLED: bool = Field(
         default=True, description="Enable or disable execution service triggers"
     )
+
+    # External execution API configuration (placeholders for future integration)
+    EXECUTION_API_URL: str = Field(
+        default="",
+        description=(
+            "Base URL for external execution API. "
+            "Leave empty if not using external execution service."
+        ),
+    )
+
+    EXECUTION_API_KEY: str = Field(
+        default="",
+        description=(
+            "API key for external execution service authentication. "
+            "Leave empty if not using external execution service."
+        ),
+    )
+
+    @field_validator("LOG_LEVEL")
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        """Validate and normalize LOG_LEVEL, falling back to INFO if invalid."""
+        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        normalized = v.upper().strip()
+
+        if normalized not in valid_levels:
+            # Use print for validation warnings since logging may not be configured yet
+            import sys
+
+            print(
+                f"WARNING: Invalid LOG_LEVEL '{v}' provided. "
+                f"Must be one of {valid_levels}. Falling back to 'INFO'.",
+                file=sys.stderr,
+            )
+            return "INFO"
+
+        return normalized
 
     def model_post_init(self, __context):
         """Validate critical configuration and fail fast if required values are missing."""

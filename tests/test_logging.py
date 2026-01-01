@@ -16,7 +16,20 @@
 import logging
 from unittest.mock import patch
 
+import pytest
+
 from app.main import create_app, setup_logging
+
+
+@pytest.fixture
+def isolated_settings(request):
+    """Fixture to patch environment variables and clear settings cache for a test."""
+    with patch.dict("os.environ", request.param):
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+        yield
+        get_settings.cache_clear()
 
 
 def test_logging_setup_configures_json_format():
@@ -29,6 +42,57 @@ def test_logging_setup_configures_json_format():
 
     handler = root_logger.handlers[0]
     assert handler.level == logging.INFO
+
+
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "DEBUG"}], indirect=True)
+def test_logging_respects_log_level_setting(isolated_settings):
+    """Test that logging uses LOG_LEVEL from settings."""
+    setup_logging()
+    root_logger = logging.getLogger()
+    assert root_logger.level == logging.DEBUG
+
+
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "INVALID_LEVEL"}], indirect=True)
+def test_logging_handles_invalid_log_level(isolated_settings):
+    """Test that invalid LOG_LEVEL falls back to INFO with warning."""
+    from app.config import get_settings
+
+    # Should not raise an exception, should fall back to INFO
+    settings = get_settings()
+    assert settings.LOG_LEVEL == "INFO"
+
+
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "debug"}], indirect=True)
+def test_logging_normalizes_log_level_case(isolated_settings):
+    """Test that LOG_LEVEL is normalized to uppercase."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    assert settings.LOG_LEVEL == "DEBUG"
+
+
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "WARNING"}], indirect=True)
+def test_logging_level_warning(isolated_settings):
+    """Test that logging level WARNING works."""
+    setup_logging()
+    root_logger = logging.getLogger()
+    assert root_logger.level == logging.WARNING
+
+
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "ERROR"}], indirect=True)
+def test_logging_level_error(isolated_settings):
+    """Test that logging level ERROR works."""
+    setup_logging()
+    root_logger = logging.getLogger()
+    assert root_logger.level == logging.ERROR
+
+
+@pytest.mark.parametrize("isolated_settings", [{"LOG_LEVEL": "CRITICAL"}], indirect=True)
+def test_logging_level_critical(isolated_settings):
+    """Test that logging level CRITICAL works."""
+    setup_logging()
+    root_logger = logging.getLogger()
+    assert root_logger.level == logging.CRITICAL
 
 
 def test_app_factory_multiple_invocations():
@@ -99,6 +163,10 @@ def test_logging_configuration_removes_duplicate_handlers():
 def test_logging_includes_service_name():
     """Test that logs include service name."""
     with patch.dict("os.environ", {"SERVICE_NAME": "test-service"}):
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+
         setup_logging()
         logger = logging.getLogger(__name__)
 
@@ -111,6 +179,9 @@ def test_logging_includes_service_name():
             success = False
 
         assert success
+
+        # Clean up
+        get_settings.cache_clear()
 
 
 def test_app_startup_logs_configuration():
@@ -169,3 +240,35 @@ def test_logging_with_special_characters(caplog):
         success = False
 
     assert success
+
+
+def test_request_correlation_id_in_logs():
+    """Test that request correlation middleware adds request_id to logs."""
+    from fastapi.testclient import TestClient
+
+    app = create_app()
+    client = TestClient(app)
+
+    # Make a request with custom request ID
+    custom_id = "test-correlation-id-123"
+    response = client.get("/health", headers={"X-Request-ID": custom_id})
+
+    # Verify response includes the request ID
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == custom_id
+
+
+def test_request_correlation_id_generated_when_missing():
+    """Test that request correlation ID is generated when not provided."""
+    from fastapi.testclient import TestClient
+
+    app = create_app()
+    client = TestClient(app)
+
+    # Make a request without request ID
+    response = client.get("/health")
+
+    # Verify response includes a generated request ID
+    assert response.status_code == 200
+    assert "X-Request-ID" in response.headers
+    assert len(response.headers["X-Request-ID"]) > 0

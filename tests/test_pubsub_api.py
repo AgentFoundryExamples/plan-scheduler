@@ -547,7 +547,7 @@ class TestUnifiedStatusWorkflow:
         non_terminal_statuses = ["running", "running", "running"]
         non_terminal_stages = ["initialization", "implementation", "testing"]
 
-        for idx, (status, stage) in enumerate(zip(non_terminal_statuses, non_terminal_stages)):
+        for idx, (status, stage) in enumerate(zip(non_terminal_statuses, non_terminal_stages, strict=False)):
             payload = {
                 "plan_id": plan_id,
                 "spec_index": 0,
