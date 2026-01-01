@@ -1058,8 +1058,8 @@ def test_process_spec_status_update_finishing_last_spec(mock_transaction_client)
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return plan snapshot then spec snapshot
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
-    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+    mock_spec_ref.get.return_value = mock_spec_snapshot
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
     mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
@@ -1131,11 +1131,9 @@ def test_process_spec_status_update_finishing_non_last_spec(mock_transaction_cli
     mock_next_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(
-        side_effect=[mock_plan_snapshot, mock_spec_snapshot, mock_next_spec_snapshot]
-    )
-    mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
-    mock_next_spec_ref.get = MagicMock(return_value=mock_next_spec_snapshot)
+    mock_plan_ref.get.return_value = mock_plan_snapshot
+    mock_spec_ref.get.return_value = mock_spec_snapshot
+    mock_next_spec_ref.get.return_value = mock_next_spec_snapshot
 
     mock_specs_collection = MagicMock()
 
@@ -1161,9 +1159,11 @@ def test_process_spec_status_update_finishing_non_last_spec(mock_transaction_cli
         client=mock_transaction_client,
     )
 
+    # Verify the result indicates execution should be triggered
     assert result["success"] is True
     assert result["plan_finished"] is False
     assert result["next_spec_triggered"] is True
+    assert "spec 1 unblocked" in result["message"].lower()
 
     # Verify next spec was unblocked (status changed to running)
     transaction = mock_transaction_client.transaction.return_value
@@ -1181,7 +1181,7 @@ def test_process_spec_status_update_finishing_non_last_spec(mock_transaction_cli
     spec_updates = spec_update_call[0][1]
     assert spec_updates["status"] == "finished"
 
-    # Third update is plan
+    # Third update is plan (next spec is now current)
     plan_update_call = update_calls[2]
     plan_updates = plan_update_call[0][1]
     assert plan_updates["current_spec_index"] == 1
@@ -1219,7 +1219,7 @@ def test_process_spec_status_update_failed_spec(mock_transaction_client):
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1286,7 +1286,7 @@ def test_process_spec_status_update_intermediate_status(mock_transaction_client)
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1350,7 +1350,7 @@ def test_process_spec_status_update_out_of_order_finished(mock_transaction_clien
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1413,7 +1413,7 @@ def test_process_spec_status_update_duplicate_message_id(mock_transaction_client
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1470,7 +1470,7 @@ def test_process_spec_status_update_history_entry_contents(mock_transaction_clie
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1542,7 +1542,7 @@ def test_process_spec_status_update_manual_retry_after_failure(mock_transaction_
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1614,7 +1614,7 @@ def test_process_spec_status_update_terminal_status_protection(mock_transaction_
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1704,7 +1704,7 @@ def test_process_spec_status_update_spec_not_found(mock_transaction_client):
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1760,7 +1760,7 @@ def test_process_spec_status_update_with_null_stage(mock_transaction_client):
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1829,7 +1829,7 @@ def test_process_spec_status_update_with_large_payload(mock_transaction_client):
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1891,7 +1891,7 @@ def test_process_spec_status_update_with_special_char_message_id(mock_transactio
     mock_spec_ref = MagicMock()
 
     # Setup get calls to return snapshots in order
-    mock_plan_ref.get = MagicMock(side_effect=[mock_plan_snapshot, mock_spec_snapshot])
+    mock_plan_ref.get.return_value = mock_plan_snapshot
     mock_spec_ref.get = MagicMock(return_value=mock_spec_snapshot)
     mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
 
@@ -1920,8 +1920,8 @@ def test_process_spec_status_update_with_special_char_message_id(mock_transactio
     assert history[0]["message_id"] == message_id
 
 
-def test_process_spec_status_update_firestore_error_handling(mock_transaction_client):
-    """Test that Firestore API errors are properly wrapped."""
+def test_process_spec_status_update_firestore_deadline_exceeded(mock_transaction_client):
+    """Test that DeadlineExceeded errors are properly wrapped."""
     from app.services.firestore_service import FirestoreOperationError, process_spec_status_update
 
     plan_id = "test-plan-id"
@@ -1931,6 +1931,93 @@ def test_process_spec_status_update_firestore_error_handling(mock_transaction_cl
     # Mock plan ref to raise Firestore error
     mock_plan_ref = MagicMock()
     mock_plan_ref.get.side_effect = gcp_exceptions.DeadlineExceeded("Timeout")
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    with pytest.raises(FirestoreOperationError) as exc_info:
+        process_spec_status_update(
+            plan_id=plan_id,
+            spec_index=spec_index,
+            status="finished",
+            stage="implementation",
+            message_id=message_id,
+            raw_payload_snippet={"test": "data"},
+            client=mock_transaction_client,
+        )
+
+    assert "Firestore API error" in str(exc_info.value)
+    assert plan_id in str(exc_info.value)
+
+
+def test_process_spec_status_update_firestore_aborted(mock_transaction_client):
+    """Test that Aborted errors (transaction conflicts) are properly wrapped."""
+    from app.services.firestore_service import FirestoreOperationError, process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-123"
+
+    # Mock plan ref to raise Aborted error (common in high-contention scenarios)
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.side_effect = gcp_exceptions.Aborted("Transaction aborted")
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    with pytest.raises(FirestoreOperationError) as exc_info:
+        process_spec_status_update(
+            plan_id=plan_id,
+            spec_index=spec_index,
+            status="finished",
+            stage="implementation",
+            message_id=message_id,
+            raw_payload_snippet={"test": "data"},
+            client=mock_transaction_client,
+        )
+
+    assert "Firestore API error" in str(exc_info.value)
+    assert plan_id in str(exc_info.value)
+
+
+def test_process_spec_status_update_firestore_failed_precondition(mock_transaction_client):
+    """Test that FailedPrecondition errors are properly wrapped."""
+    from app.services.firestore_service import FirestoreOperationError, process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-123"
+
+    # Mock plan ref to raise FailedPrecondition error
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.side_effect = gcp_exceptions.FailedPrecondition("Precondition failed")
+
+    mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
+
+    with pytest.raises(FirestoreOperationError) as exc_info:
+        process_spec_status_update(
+            plan_id=plan_id,
+            spec_index=spec_index,
+            status="finished",
+            stage="implementation",
+            message_id=message_id,
+            raw_payload_snippet={"test": "data"},
+            client=mock_transaction_client,
+        )
+
+    assert "Firestore API error" in str(exc_info.value)
+    assert plan_id in str(exc_info.value)
+
+
+def test_process_spec_status_update_firestore_resource_exhausted(mock_transaction_client):
+    """Test that ResourceExhausted errors (quota limits) are properly wrapped."""
+    from app.services.firestore_service import FirestoreOperationError, process_spec_status_update
+
+    plan_id = "test-plan-id"
+    spec_index = 0
+    message_id = "msg-123"
+
+    # Mock plan ref to raise ResourceExhausted error
+    mock_plan_ref = MagicMock()
+    mock_plan_ref.get.side_effect = gcp_exceptions.ResourceExhausted("Quota exceeded")
 
     mock_transaction_client.collection.return_value.document.return_value = mock_plan_ref
 
