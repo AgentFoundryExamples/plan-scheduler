@@ -38,8 +38,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for plans  
-**Size:** 5.80 KB  
-**LOC:** 131  
+**Size:** 9.98 KB  
+**LOC:** 236  
 **TODOs/FIXMEs:** 0  
 
 ## app/api/pubsub.py
@@ -92,8 +92,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for plan  
-**Size:** 15.19 KB  
-**LOC:** 349  
+**Size:** 15.55 KB  
+**LOC:** 353  
 **TODOs/FIXMEs:** 0  
 
 ## app/models/pubsub.py
@@ -128,8 +128,8 @@ Total files: 27
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for firestore service  
-**Size:** 33.28 KB  
-**LOC:** 641  
+**Size:** 35.57 KB  
+**LOC:** 683  
 **TODOs/FIXMEs:** 0  
 
 ## tests/__init__.py
@@ -218,8 +218,8 @@ Total files: 27
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 22.22 KB  
-**LOC:** 425  
+**Size:** 33.41 KB  
+**LOC:** 707  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_pubsub_api.py

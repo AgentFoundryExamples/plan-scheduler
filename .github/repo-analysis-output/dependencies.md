@@ -11,7 +11,7 @@ Includes classification of external dependencies as stdlib vs third-party.
 - **Total files**: 27
 - **Intra-repo dependencies**: 42
 - **External stdlib dependencies**: 18
-- **External third-party dependencies**: 19
+- **External third-party dependencies**: 20
 
 ## External Dependencies
 
@@ -40,12 +40,13 @@ Total: 18 unique modules
 
 ### Third-Party Packages
 
-Total: 19 unique packages
+Total: 20 unique packages
 
 - `fastapi.APIRouter`
 - `fastapi.FastAPI`
 - `fastapi.HTTPException`
 - `fastapi.Header`
+- `fastapi.Query`
 - `fastapi.Response`
 - `fastapi.status`
 - `fastapi.testclient.TestClient`

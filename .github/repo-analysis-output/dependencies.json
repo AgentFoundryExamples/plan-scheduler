@@ -35,11 +35,13 @@
       "type": "file",
       "external_dependencies": {
         "stdlib": [
-          "logging"
+          "logging",
+          "uuid.UUID"
         ],
         "third-party": [
           "fastapi.APIRouter",
           "fastapi.HTTPException",
+          "fastapi.Query",
           "fastapi.Response",
           "fastapi.status"
         ]
@@ -407,15 +409,15 @@
   "edges": [
     {
       "source": "app/api/plans.py",
+      "target": "app/dependencies.py"
+    },
+    {
+      "source": "app/api/plans.py",
       "target": "app/models/plan.py"
     },
     {
       "source": "app/api/plans.py",
       "target": "app/services/firestore_service.py"
-    },
-    {
-      "source": "app/api/plans.py",
-      "target": "app/dependencies.py"
     },
     {
       "source": "app/api/pubsub.py",
@@ -600,6 +602,7 @@
       "fastapi.FastAPI",
       "fastapi.HTTPException",
       "fastapi.Header",
+      "fastapi.Query",
       "fastapi.Response",
       "fastapi.status",
       "fastapi.testclient.TestClient",
@@ -617,6 +620,6 @@
       "pythonjsonlogger.json.JsonFormatter"
     ],
     "stdlib_count": 18,
-    "third-party_count": 19
+    "third-party_count": 20
   }
 }
