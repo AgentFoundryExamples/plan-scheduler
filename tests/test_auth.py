@@ -183,6 +183,7 @@ class TestValidateOIDCToken:
             "iss": "https://accounts.google.com",
             "sub": "different@example.com",
             "email": "test@example.com",
+            "email_verified": True,  # Email is verified
         }
 
         with patch("app.auth.jwt.decode", return_value=mock_decoded):
@@ -193,3 +194,21 @@ class TestValidateOIDCToken:
             )
 
             assert result == mock_decoded
+
+    def test_service_account_email_not_verified_raises_error(self):
+        """Test that unverified email raises OIDCValidationError."""
+        mock_decoded = {
+            "aud": "https://example.com",
+            "iss": "https://accounts.google.com",
+            "sub": "different@example.com",
+            "email": "test@example.com",
+            "email_verified": False,  # Email is NOT verified
+        }
+
+        with patch("app.auth.jwt.decode", return_value=mock_decoded):
+            with pytest.raises(OIDCValidationError, match="Service account email is not verified"):
+                validate_oidc_token(
+                    token="fake-token",
+                    expected_audience="https://example.com",
+                    expected_service_account_email="test@example.com",
+                )

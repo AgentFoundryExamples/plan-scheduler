@@ -164,12 +164,15 @@ class Settings(BaseSettings):
 
         # Validate Pub/Sub authentication configuration
         if self.PUBSUB_OIDC_ENABLED:
-            # When OIDC is enabled, require audience
+            # When OIDC is enabled, require audience - fail fast
             if not self.PUBSUB_EXPECTED_AUDIENCE or not self.PUBSUB_EXPECTED_AUDIENCE.strip():
-                logger.warning(
-                    "PUBSUB_OIDC_ENABLED is True but PUBSUB_EXPECTED_AUDIENCE is not set. "
-                    "OIDC validation will fail. Set PUBSUB_EXPECTED_AUDIENCE to your "
-                    "Cloud Run service URL or disable OIDC by setting PUBSUB_OIDC_ENABLED=False."
+                logger.error(
+                    "CRITICAL: PUBSUB_EXPECTED_AUDIENCE is required when "
+                    "PUBSUB_OIDC_ENABLED is True. "
+                    "OIDC authentication will fail for all requests. "
+                    "Set PUBSUB_EXPECTED_AUDIENCE to your Cloud Run service URL "
+                    "or disable OIDC by setting PUBSUB_OIDC_ENABLED=False.",
+                    extra={"pubsub_oidc_enabled": True, "pubsub_expected_audience": ""},
                 )
             # Shared token becomes optional when OIDC is enabled
             if not self.PUBSUB_VERIFICATION_TOKEN or not self.PUBSUB_VERIFICATION_TOKEN.strip():

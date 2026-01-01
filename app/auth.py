@@ -134,6 +134,21 @@ def validate_oidc_token(
                     f"Service account mismatch: expected {expected_service_account_email}"
                 )
 
+            # If email claim is used for validation, verify it's been validated by the issuer
+            if token_email == expected_service_account_email:
+                email_verified = decoded_token.get("email_verified")
+                if email_verified is False:  # Explicitly check for False (not just falsy)
+                    logger.warning(
+                        "OIDC token validation failed: service account email matched "
+                        "but is not verified",
+                        extra={
+                            "expected_service_account": expected_service_account_email,
+                            "token_email": token_email,
+                            "email_verified": email_verified,
+                        },
+                    )
+                    raise OIDCValidationError("Service account email is not verified")
+
         logger.info(
             "OIDC token validated successfully",
             extra={
