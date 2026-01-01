@@ -23,8 +23,12 @@ from app.models.plan import (
     PlanCreateResponse,
     PlanIn,
     PlanRecord,
+    PlanStatus,
+    PlanStatusOut,
     SpecIn,
     SpecRecord,
+    SpecStatus,
+    SpecStatusOut,
     create_initial_plan_record,
     create_initial_spec_record,
 )
@@ -924,3 +928,539 @@ class TestEdgeCases:
         for i, spec in enumerate(plan_in.specs):
             assert spec.purpose == f"Purpose {i}"
             assert spec.vision == f"Vision {i}"
+
+
+class TestSpecStatusOut:
+    """Tests for SpecStatusOut response model."""
+
+    def test_spec_status_out_creation_with_all_fields(self):
+        """Test SpecStatusOut creation with all fields."""
+        now = datetime.now(UTC)
+        status_out = SpecStatusOut(
+            spec_index=0,
+            status="running",
+            stage="implementation",
+            updated_at=now,
+        )
+
+        assert status_out.spec_index == 0
+        assert status_out.status == "running"
+        assert status_out.stage == "implementation"
+        assert status_out.updated_at == now
+
+    def test_spec_status_out_accepts_all_valid_statuses(self):
+        """Test SpecStatusOut accepts all valid status values."""
+        now = datetime.now(UTC)
+        valid_statuses = ["blocked", "running", "finished", "failed"]
+
+        for status in valid_statuses:
+            status_out = SpecStatusOut(
+                spec_index=0,
+                status=status,
+                updated_at=now,
+            )
+            assert status_out.status == status
+
+    def test_spec_status_out_rejects_invalid_status(self):
+        """Test SpecStatusOut rejects invalid status values."""
+        now = datetime.now(UTC)
+
+        with pytest.raises(ValidationError) as exc_info:
+            SpecStatusOut(
+                spec_index=0,
+                status="invalid",
+                updated_at=now,
+            )
+
+        errors = exc_info.value.errors()
+        assert any("status" in str(e) for e in errors)
+        # Enum validation error message
+        assert any("enum" in str(e).lower() for e in errors)
+
+    def test_spec_status_out_stage_is_optional(self):
+        """Test SpecStatusOut allows stage to be None."""
+        now = datetime.now(UTC)
+        status_out = SpecStatusOut(
+            spec_index=0,
+            status="running",
+            updated_at=now,
+        )
+
+        assert status_out.stage is None
+
+    def test_spec_status_out_validates_non_negative_spec_index(self):
+        """Test SpecStatusOut rejects negative spec_index."""
+        now = datetime.now(UTC)
+
+        with pytest.raises(ValidationError) as exc_info:
+            SpecStatusOut(
+                spec_index=-1,
+                status="running",
+                updated_at=now,
+            )
+
+        errors = exc_info.value.errors()
+        assert any("spec_index" in str(e) for e in errors)
+
+    def test_spec_status_out_converts_naive_datetime_to_utc(self):
+        """Test SpecStatusOut converts naive datetime to UTC."""
+        naive_dt = datetime(2025, 1, 1, 12, 0, 0)
+
+        status_out = SpecStatusOut.model_validate(
+            {
+                "spec_index": 0,
+                "status": "running",
+                "updated_at": naive_dt,
+            }
+        )
+
+        assert status_out.updated_at.tzinfo == UTC
+
+    def test_spec_status_out_preserves_timezone_aware_datetime(self):
+        """Test SpecStatusOut preserves timezone-aware datetime."""
+        aware_dt = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+        status_out = SpecStatusOut(
+            spec_index=0,
+            status="running",
+            updated_at=aware_dt,
+        )
+
+        assert status_out.updated_at.tzinfo == UTC
+        assert status_out.updated_at == aware_dt
+
+    def test_spec_status_out_serialization(self):
+        """Test SpecStatusOut serializes correctly."""
+        now = datetime.now(UTC)
+        status_out = SpecStatusOut(
+            spec_index=2,
+            status="finished",
+            stage="reviewing",
+            updated_at=now,
+        )
+
+        data = status_out.model_dump()
+        assert data["spec_index"] == 2
+        assert data["status"] == "finished"
+        assert data["stage"] == "reviewing"
+        assert data["updated_at"] == now
+
+    def test_spec_status_out_serialization_with_none_stage(self):
+        """Test SpecStatusOut serialization when stage is None."""
+        now = datetime.now(UTC)
+        status_out = SpecStatusOut(
+            spec_index=0,
+            status="blocked",
+            updated_at=now,
+        )
+
+        data = status_out.model_dump()
+        assert data["stage"] is None
+
+
+class TestPlanStatusOut:
+    """Tests for PlanStatusOut response model."""
+
+    def test_plan_status_out_creation_with_all_fields(self):
+        """Test PlanStatusOut creation with all fields."""
+        now = datetime.now(UTC)
+        spec1 = SpecStatusOut(spec_index=0, status="finished", updated_at=now)
+        spec2 = SpecStatusOut(spec_index=1, status="running", updated_at=now)
+
+        status_out = PlanStatusOut(
+            plan_id=str(uuid4()),
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=2,
+            completed_specs=1,
+            current_spec_index=1,
+            specs=[spec1, spec2],
+        )
+
+        assert status_out.total_specs == 2
+        assert status_out.completed_specs == 1
+        assert status_out.current_spec_index == 1
+        assert len(status_out.specs) == 2
+
+    def test_plan_status_out_accepts_all_valid_statuses(self):
+        """Test PlanStatusOut accepts all valid overall_status values."""
+        now = datetime.now(UTC)
+        valid_statuses = ["running", "finished", "failed"]
+
+        for status in valid_statuses:
+            status_out = PlanStatusOut(
+                plan_id=str(uuid4()),
+                overall_status=status,
+                created_at=now,
+                updated_at=now,
+                total_specs=1,
+                completed_specs=0,
+                specs=[],
+            )
+            assert status_out.overall_status == status
+
+    def test_plan_status_out_rejects_invalid_overall_status(self):
+        """Test PlanStatusOut rejects invalid overall_status values."""
+        now = datetime.now(UTC)
+
+        with pytest.raises(ValidationError) as exc_info:
+            PlanStatusOut(
+                plan_id=str(uuid4()),
+                overall_status="blocked",
+                created_at=now,
+                updated_at=now,
+                total_specs=1,
+                completed_specs=0,
+                specs=[],
+            )
+
+        errors = exc_info.value.errors()
+        assert any("overall_status" in str(e) for e in errors)
+        # Enum validation error message
+        assert any("enum" in str(e).lower() for e in errors)
+
+    def test_plan_status_out_rejects_invalid_status_string(self):
+        """Test PlanStatusOut rejects invalid status string."""
+        now = datetime.now(UTC)
+
+        with pytest.raises(ValidationError) as exc_info:
+            PlanStatusOut(
+                plan_id=str(uuid4()),
+                overall_status="invalid",
+                created_at=now,
+                updated_at=now,
+                total_specs=1,
+                completed_specs=0,
+                specs=[],
+            )
+
+        errors = exc_info.value.errors()
+        # Enum validation error message
+        assert any("enum" in str(e).lower() for e in errors)
+
+    def test_plan_status_out_current_spec_index_can_be_none(self):
+        """Test PlanStatusOut allows current_spec_index to be None."""
+        now = datetime.now(UTC)
+        status_out = PlanStatusOut(
+            plan_id=str(uuid4()),
+            overall_status="finished",
+            created_at=now,
+            updated_at=now,
+            total_specs=1,
+            completed_specs=1,
+            current_spec_index=None,
+            specs=[],
+        )
+
+        assert status_out.current_spec_index is None
+
+    def test_plan_status_out_converts_naive_datetimes_to_utc(self):
+        """Test PlanStatusOut converts naive datetimes to UTC."""
+        naive_dt = datetime(2025, 1, 1, 12, 0, 0)
+
+        status_out = PlanStatusOut.model_validate(
+            {
+                "plan_id": str(uuid4()),
+                "overall_status": "running",
+                "created_at": naive_dt,
+                "updated_at": naive_dt,
+                "total_specs": 1,
+                "completed_specs": 0,
+                "specs": [],
+            }
+        )
+
+        assert status_out.created_at.tzinfo == UTC
+        assert status_out.updated_at.tzinfo == UTC
+
+    def test_plan_status_out_validates_non_negative_counters(self):
+        """Test PlanStatusOut validates counters are non-negative."""
+        now = datetime.now(UTC)
+
+        with pytest.raises(ValidationError) as exc_info:
+            PlanStatusOut(
+                plan_id=str(uuid4()),
+                overall_status="running",
+                created_at=now,
+                updated_at=now,
+                total_specs=-1,
+                completed_specs=0,
+                specs=[],
+            )
+
+        errors = exc_info.value.errors()
+        assert any("total_specs" in str(e) for e in errors)
+
+    def test_plan_status_out_from_records_basic(self):
+        """Test PlanStatusOut.from_records with basic scenario."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        # Create plan record
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=2,
+            completed_specs=0,
+            current_spec_index=0,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        # Create spec records
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Test 1",
+                vision="Vision 1",
+                status="running",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=1,
+                purpose="Test 2",
+                vision="Vision 2",
+                status="blocked",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        assert status_out.plan_id == plan_id
+        assert status_out.overall_status == "running"
+        assert status_out.total_specs == 2
+        assert status_out.completed_specs == 0
+        assert status_out.current_spec_index == 0
+        assert len(status_out.specs) == 2
+        assert status_out.specs[0].spec_index == 0
+        assert status_out.specs[0].status == "running"
+        assert status_out.specs[1].spec_index == 1
+        assert status_out.specs[1].status == "blocked"
+
+    def test_plan_status_out_from_records_computes_completed_specs(self):
+        """Test PlanStatusOut.from_records correctly computes completed_specs."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=5,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        spec_records = [
+            SpecRecord(
+                spec_index=i,
+                purpose=f"Test {i}",
+                vision=f"Vision {i}",
+                status="finished" if i < 3 else ("running" if i == 3 else "blocked"),
+                created_at=now,
+                updated_at=now,
+            )
+            for i in range(5)
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        assert status_out.completed_specs == 3
+
+    def test_plan_status_out_from_records_computes_current_spec_index(self):
+        """Test PlanStatusOut.from_records correctly computes current_spec_index."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=3,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Test 0",
+                vision="Vision 0",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=1,
+                purpose="Test 1",
+                vision="Vision 1",
+                status="running",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=2,
+                purpose="Test 2",
+                vision="Vision 2",
+                status="blocked",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        assert status_out.current_spec_index == 1
+
+    def test_plan_status_out_from_records_current_spec_index_none_when_no_running(self):
+        """Test PlanStatusOut.from_records sets current_spec_index to None when no running spec."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="finished",
+            created_at=now,
+            updated_at=now,
+            total_specs=2,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Test 0",
+                vision="Vision 0",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            ),
+            SpecRecord(
+                spec_index=1,
+                purpose="Test 1",
+                vision="Vision 1",
+                status="finished",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        assert status_out.current_spec_index is None
+
+    def test_plan_status_out_from_records_with_current_stage(self):
+        """Test PlanStatusOut.from_records includes current_stage from spec records."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=1,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Test",
+                vision="Vision",
+                status="running",
+                current_stage="implementation",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        assert status_out.specs[0].stage == "implementation"
+
+    def test_plan_status_out_from_records_with_none_current_stage(self):
+        """Test PlanStatusOut.from_records handles None current_stage."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+
+        plan_record = PlanRecord(
+            plan_id=plan_id,
+            overall_status="running",
+            created_at=now,
+            updated_at=now,
+            total_specs=1,
+            last_event_at=now,
+            raw_request={},
+        )
+
+        spec_records = [
+            SpecRecord(
+                spec_index=0,
+                purpose="Test",
+                vision="Vision",
+                status="blocked",
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+
+        status_out = PlanStatusOut.from_records(plan_record, spec_records)
+
+        assert status_out.specs[0].stage is None
+
+    def test_plan_status_out_serialization(self):
+        """Test PlanStatusOut serializes correctly."""
+        now = datetime.now(UTC)
+        plan_id = str(uuid4())
+        spec1 = SpecStatusOut(spec_index=0, status="finished", updated_at=now)
+
+        status_out = PlanStatusOut(
+            plan_id=plan_id,
+            overall_status="finished",
+            created_at=now,
+            updated_at=now,
+            total_specs=1,
+            completed_specs=1,
+            current_spec_index=None,
+            specs=[spec1],
+        )
+
+        data = status_out.model_dump()
+        assert data["plan_id"] == plan_id
+        assert data["overall_status"] == "finished"
+        assert data["total_specs"] == 1
+        assert data["completed_specs"] == 1
+        assert data["current_spec_index"] is None
+        assert len(data["specs"]) == 1
+
+
+class TestStatusEnums:
+    """Tests for status enums."""
+
+    def test_spec_status_enum_values(self):
+        """Test SpecStatus enum has correct values."""
+        assert SpecStatus.BLOCKED.value == "blocked"
+        assert SpecStatus.RUNNING.value == "running"
+        assert SpecStatus.FINISHED.value == "finished"
+        assert SpecStatus.FAILED.value == "failed"
+
+    def test_plan_status_enum_values(self):
+        """Test PlanStatus enum has correct values."""
+        assert PlanStatus.RUNNING.value == "running"
+        assert PlanStatus.FINISHED.value == "finished"
+        assert PlanStatus.FAILED.value == "failed"
+
+    def test_spec_status_enum_has_no_blocked(self):
+        """Test PlanStatus enum does not have BLOCKED."""
+        assert not hasattr(PlanStatus, "BLOCKED")
