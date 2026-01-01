@@ -543,6 +543,9 @@ def process_spec_status_update(
     stage: str | None,
     message_id: str,
     raw_payload_snippet: dict[str, Any],
+    details: str | None = None,
+    correlation_id: str | None = None,
+    timestamp: str | None = None,
     client: firestore.Client | None = None,
 ) -> dict[str, Any]:
     """
@@ -552,11 +555,16 @@ def process_spec_status_update(
     1. Load plan and target spec within a transaction
     2. Verify ordering (detect out-of-order or stale terminal events)
     3. Check for duplicate messageIds to prevent double-processing
-    4. Append status history entry with timestamp, status, stage, messageId, raw snippet
+    4. Append status history entry with timestamp, status, stage, details, correlation_id, messageId, raw snippet
     5. Update spec and plan fields based on status type:
-       - "finished": Mark spec finished, advance plan, trigger next spec
-       - "failed": Mark spec/plan failed, no further triggers
-       - Intermediate statuses: Update stage field, keep main status unchanged
+       - "finished": Mark spec finished, advance plan, trigger next spec (terminal)
+       - "failed": Mark spec/plan failed, no further triggers (terminal)
+       - All other statuses: Update stage field, keep main status unchanged (informational)
+
+    Terminal vs Informational Statuses:
+    - Terminal statuses ("finished", "failed") trigger state machine transitions
+    - All other status values are informational and stored in history without
+      changing the spec's main status field or triggering transitions
 
     TRANSACTION STRATEGY:
     Uses Firestore transactions to ensure atomicity. All reads must happen before writes.
@@ -570,10 +578,13 @@ def process_spec_status_update(
     Args:
         plan_id: Plan ID as UUID string
         spec_index: Zero-based index of the spec
-        status: New status value (blocked, running, finished, failed)
+        status: New status value (any string, "finished" and "failed" are terminal)
         stage: Optional execution stage/phase information
         message_id: Pub/Sub message ID for deduplication
         raw_payload_snippet: Snippet of raw payload for history
+        details: Optional additional details about the status update
+        correlation_id: Optional correlation ID for tracking related events
+        timestamp: Optional timestamp for when this status occurred (ISO 8601 format)
         client: Optional Firestore client (uses get_client() if not provided)
 
     Returns:
@@ -708,11 +719,13 @@ def process_spec_status_update(
                 )
                 return
 
-        # Step 5: Create history entry
+        # Step 5: Create history entry with all fields
         history_entry = {
             "timestamp": now.isoformat(),
             "received_status": status,
             "stage": stage,
+            "details": details,
+            "correlation_id": correlation_id,
             "raw_snippet": raw_payload_snippet,
             "message_id": message_id,
         }

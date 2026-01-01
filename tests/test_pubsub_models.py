@@ -55,7 +55,7 @@ class TestSpecStatusPayload:
         assert payload.stage is None
 
     def test_valid_status_values(self):
-        """Test all valid status values are accepted."""
+        """Test all standard status values are accepted."""
         plan_id = str(uuid4())
         valid_statuses = ["blocked", "running", "finished", "failed"]
 
@@ -63,15 +63,21 @@ class TestSpecStatusPayload:
             payload = SpecStatusPayload(plan_id=plan_id, spec_index=0, status=status)
             assert payload.status == status
 
-    def test_invalid_status_rejected(self):
-        """Test invalid status values are rejected."""
+    def test_unknown_status_accepted(self):
+        """Test that unknown status values are accepted and stored verbatim."""
+        plan_id = str(uuid4())
+        unknown_statuses = ["invalid", "CUSTOM_STATUS", "processing", "IN_PROGRESS"]
+
+        for status in unknown_statuses:
+            payload = SpecStatusPayload(plan_id=plan_id, spec_index=0, status=status)
+            assert payload.status == status
+
+    def test_uppercase_status_accepted(self):
+        """Test that uppercase status values are accepted."""
         plan_id = str(uuid4())
 
-        with pytest.raises(ValidationError) as exc_info:
-            SpecStatusPayload(plan_id=plan_id, spec_index=0, status="invalid")
-
-        errors = exc_info.value.errors()
-        assert any("status" in str(e) for e in errors)
+        payload = SpecStatusPayload(plan_id=plan_id, spec_index=0, status="FINISHED")
+        assert payload.status == "FINISHED"
 
     def test_missing_plan_id_rejected(self):
         """Test missing plan_id is rejected."""
@@ -124,6 +130,68 @@ class TestSpecStatusPayload:
         payload = SpecStatusPayload(plan_id=plan_id, spec_index=999, status="running")
 
         assert payload.spec_index == 999
+
+    def test_optional_details_field(self):
+        """Test optional details field is accepted."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id,
+            spec_index=0,
+            status="running",
+            details="Additional information about the status",
+        )
+
+        assert payload.details == "Additional information about the status"
+
+    def test_optional_correlation_id_field(self):
+        """Test optional correlation_id field is accepted."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id,
+            spec_index=0,
+            status="running",
+            correlation_id="trace-123-456",
+        )
+
+        assert payload.correlation_id == "trace-123-456"
+
+    def test_optional_timestamp_field(self):
+        """Test optional timestamp field is accepted."""
+        plan_id = str(uuid4())
+        timestamp = "2025-01-01T12:00:00Z"
+        payload = SpecStatusPayload(
+            plan_id=plan_id, spec_index=0, status="running", timestamp=timestamp
+        )
+
+        assert payload.timestamp == timestamp
+
+    def test_all_optional_fields_together(self):
+        """Test all optional fields can be used together."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(
+            plan_id=plan_id,
+            spec_index=0,
+            status="running",
+            stage="implementation",
+            details="Currently implementing feature X",
+            correlation_id="trace-abc-123",
+            timestamp="2025-01-01T12:00:00Z",
+        )
+
+        assert payload.stage == "implementation"
+        assert payload.details == "Currently implementing feature X"
+        assert payload.correlation_id == "trace-abc-123"
+        assert payload.timestamp == "2025-01-01T12:00:00Z"
+
+    def test_optional_fields_default_to_none(self):
+        """Test optional fields default to None when not provided."""
+        plan_id = str(uuid4())
+        payload = SpecStatusPayload(plan_id=plan_id, spec_index=0, status="running")
+
+        assert payload.stage is None
+        assert payload.details is None
+        assert payload.correlation_id is None
+        assert payload.timestamp is None
 
     def test_payload_serialization(self):
         """Test payload serializes correctly to dict."""
@@ -450,18 +518,16 @@ class TestEndToEndPubSubFlow:
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("spec_index",) for e in errors)
 
-    def test_message_with_invalid_status_fails_validation(self):
-        """Test that decoded message with invalid status fails validation."""
-        payload = {"plan_id": str(uuid4()), "spec_index": 0, "status": "invalid-status"}
+    def test_message_with_custom_status_accepted(self):
+        """Test that decoded message with custom status is accepted."""
+        payload = {"plan_id": str(uuid4()), "spec_index": 0, "status": "custom-status"}
         encoded_data = base64.b64encode(json.dumps(payload).encode()).decode()
 
         decoded = decode_pubsub_message(encoded_data)
 
-        with pytest.raises(ValidationError) as exc_info:
-            SpecStatusPayload.model_validate(decoded)
-
-        errors = exc_info.value.errors()
-        assert any("status" in str(e) for e in errors)
+        # Should not raise ValidationError - custom statuses are now accepted
+        status_payload = SpecStatusPayload.model_validate(decoded)
+        assert status_payload.status == "custom-status"
 
     def test_real_pubsub_push_request_structure(self):
         """Test parsing a realistic Pub/Sub push request payload."""

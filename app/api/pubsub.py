@@ -178,6 +178,9 @@ async def spec_status_update(
             stage=payload.stage,
             message_id=envelope.message.messageId,
             raw_payload_snippet=payload.model_dump(),
+            details=payload.details,
+            correlation_id=payload.correlation_id,
+            timestamp=payload.timestamp,
             client=client,
         )
 

@@ -39,12 +39,22 @@ class SpecStatusPayload(BaseModel):
     spec execution status information. It must always include plan_id
     and spec_index so downstream handlers can identify which spec to update.
 
+    Terminal Statuses (trigger state transitions):
+        - "finished": Spec completed successfully
+        - "failed": Spec execution failed
+
+    All other status values are treated as informational and stored in history
+    without triggering terminal state transitions. Unknown or custom status
+    strings are accepted and stored verbatim.
+
     Fields:
         plan_id: UUID string identifying the plan (required)
         spec_index: Zero-based index of the spec within the plan (required)
-        status: Current status of the spec execution (required)
-                Valid values: "blocked", "running", "finished", "failed"
+        status: Current status of the spec execution (required, any string accepted)
         stage: Optional execution stage/phase information
+        details: Optional additional details about the status update
+        correlation_id: Optional correlation ID for tracking related events
+        timestamp: Optional timestamp for when this status occurred (ISO 8601 format)
     """
 
     plan_id: str = Field(..., description="Plan ID as UUID string - required for spec resolution")
@@ -55,11 +65,23 @@ class SpecStatusPayload(BaseModel):
     )
     status: str = Field(
         ...,
-        description="Spec execution status: blocked, running, finished, or failed",
-        pattern="^(blocked|running|finished|failed)$",
+        description=(
+            "Spec execution status. Terminal statuses: 'finished', 'failed'. "
+            "All other values are informational and stored in history."
+        ),
     )
     stage: str | None = Field(
         default=None, description="Optional execution stage/phase information"
+    )
+    details: str | None = Field(
+        default=None, description="Optional additional details about the status update"
+    )
+    correlation_id: str | None = Field(
+        default=None, description="Optional correlation ID for tracking related events"
+    )
+    timestamp: str | None = Field(
+        default=None,
+        description="Optional timestamp for when this status occurred (ISO 8601 format)",
     )
 
 
