@@ -133,7 +133,11 @@ docker-test: docker-stop docker-build docker-run-test
 	@echo ""
 	@echo "Testing health endpoint..."
 	@if command -v curl >/dev/null 2>&1; then \
-		curl -s http://localhost:8080/health || echo "Health check failed!"; \
+		if curl -f -s http://localhost:8080/health; then \
+			echo "✓ Health check passed"; \
+		else \
+			echo "✗ Health check failed (HTTP error or connection refused)"; \
+		fi; \
 	else \
 		echo "curl not found - skipping health check test"; \
 		echo "Install curl to test the health endpoint"; \

@@ -40,8 +40,13 @@ WORKDIR /app
 
 # Create non-root user and group with configurable UID/GID for security
 # Using default UID/GID 1000, but configurable via build args
-RUN groupadd -r -g ${APP_GID} appuser && \
-    useradd -r -u ${APP_UID} -g appuser -s /sbin/nologin -c "Application user" appuser
+# Check if user/group already exist before creating to avoid conflicts
+RUN if ! getent group appuser >/dev/null 2>&1; then \
+        groupadd -r -g ${APP_GID} appuser; \
+    fi && \
+    if ! getent passwd appuser >/dev/null 2>&1; then \
+        useradd -r -u ${APP_UID} -g appuser -s /sbin/nologin -c "Application user" appuser; \
+    fi
 
 # Copy requirements.txt from the builder stage
 COPY --from=builder /app/requirements.txt ./

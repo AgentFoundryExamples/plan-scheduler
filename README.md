@@ -1771,7 +1771,7 @@ gcloud run deploy plan-scheduler \
   --set-env-vars WORKERS=1 \
   --set-env-vars LOG_LEVEL=INFO \
   --set-env-vars PUBSUB_OIDC_ENABLED=true \
-  --set-env-vars PUBSUB_EXPECTED_AUDIENCE=https://plan-scheduler-${PROJECT_ID}.a.run.app \
+  --set-env-vars PUBSUB_EXPECTED_AUDIENCE=https://YOUR-SERVICE-URL \
   --set-env-vars PUBSUB_EXPECTED_ISSUER=https://accounts.google.com \
   --memory 512Mi \
   --cpu 1 \
@@ -1781,12 +1781,17 @@ gcloud run deploy plan-scheduler \
 
 **Important Notes:**
 - Cloud Run automatically injects the `PORT` environment variable, so you don't need to set it.
-- The `PUBSUB_EXPECTED_AUDIENCE` should match your actual Cloud Run service URL. After initial deployment, verify the URL with:
+- The `PUBSUB_EXPECTED_AUDIENCE` should match your actual Cloud Run service URL. After deployment, get the actual URL with:
   ```bash
   SERVICE_URL=$(gcloud run services describe plan-scheduler --region ${REGION} --format 'value(status.url)')
   echo "Actual service URL: ${SERVICE_URL}"
   ```
-  Then update the environment variable if needed to match the actual URL.
+  Then update the `PUBSUB_EXPECTED_AUDIENCE` environment variable to match:
+  ```bash
+  gcloud run services update plan-scheduler \
+    --region ${REGION} \
+    --set-env-vars PUBSUB_EXPECTED_AUDIENCE=${SERVICE_URL}
+  ```
 
 #### 3. Configure Environment Variables
 
