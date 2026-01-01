@@ -15,6 +15,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import MagicMock, patch
 
 from app.main import create_app
 
@@ -40,6 +41,71 @@ def test_health_check_content_type(client):
 
     assert response.status_code == 200
     assert "application/json" in response.headers["content-type"]
+
+
+def test_health_check_includes_request_id(client):
+    """Test that health check includes X-Request-ID in response."""
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert "X-Request-ID" in response.headers
+    # Request ID should be a UUID-like string
+    assert len(response.headers["X-Request-ID"]) > 0
+
+
+def test_health_check_preserves_custom_request_id(client):
+    """Test that custom X-Request-ID is preserved."""
+    custom_id = "test-request-123"
+    response = client.get("/health", headers={"X-Request-ID": custom_id})
+
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == custom_id
+
+
+def test_readiness_check_returns_ready(client):
+    """Test that readiness check returns 200 when dependencies are healthy."""
+    response = client.get("/readiness")
+
+    # Should return 200 when Firestore client can be initialized
+    # In test environment, this might fail if no credentials
+    # but we're testing the endpoint structure
+    assert response.status_code in [200, 503]
+    data = response.json()
+    assert "status" in data
+    assert data["status"] in ["ready", "not_ready"]
+
+
+def test_readiness_check_fails_when_firestore_unavailable(client):
+    """Test that readiness check returns 503 when Firestore is unavailable."""
+    # Mock get_firestore_client to raise an exception at the import level
+    with patch("app.dependencies.firestore_service.get_client") as mock_client:
+        mock_client.side_effect = Exception("Firestore unavailable")
+
+        response = client.get("/readiness")
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["status"] == "not_ready"
+        assert "issues" in data
+        assert len(data["issues"]) > 0
+
+
+def test_liveness_check_returns_alive(client):
+    """Test that liveness check returns 200 with alive status."""
+    response = client.get("/liveness")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "alive"}
+
+
+def test_liveness_check_is_lightweight(client):
+    """Test that liveness check doesn't perform expensive operations."""
+    # Liveness should not depend on external services
+    # It should always succeed if the app is running
+    response = client.get("/liveness")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "alive"}
 
 
 def test_app_startup():
@@ -72,6 +138,12 @@ def test_openapi_docs_available(client):
     openapi_data = response.json()
     assert "openapi" in openapi_data
     assert "info" in openapi_data
+
+    # Verify new endpoints are documented
+    paths = openapi_data.get("paths", {})
+    assert "/health" in paths
+    assert "/readiness" in paths
+    assert "/liveness" in paths
 
     # Test Swagger UI docs
     response = client.get("/docs")

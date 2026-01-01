@@ -16,6 +16,8 @@
 import logging
 from unittest.mock import patch
 
+import pytest
+
 from app.main import create_app, setup_logging
 
 
@@ -29,6 +31,102 @@ def test_logging_setup_configures_json_format():
 
     handler = root_logger.handlers[0]
     assert handler.level == logging.INFO
+
+
+def test_logging_respects_log_level_setting():
+    """Test that logging uses LOG_LEVEL from settings."""
+    with patch.dict("os.environ", {"LOG_LEVEL": "DEBUG"}):
+        from app.config import Settings
+
+        # Clear the cache to force reload
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+
+        setup_logging()
+        root_logger = logging.getLogger()
+
+        assert root_logger.level == logging.DEBUG
+
+        # Clean up
+        get_settings.cache_clear()
+
+
+def test_logging_handles_invalid_log_level():
+    """Test that invalid LOG_LEVEL falls back to INFO with warning."""
+    with patch.dict("os.environ", {"LOG_LEVEL": "INVALID_LEVEL"}):
+        from app.config import Settings, get_settings
+
+        get_settings.cache_clear()
+
+        # Should not raise an exception, should fall back to INFO
+        settings = get_settings()
+        assert settings.LOG_LEVEL == "INFO"
+
+        # Clean up
+        get_settings.cache_clear()
+
+
+def test_logging_normalizes_log_level_case():
+    """Test that LOG_LEVEL is normalized to uppercase."""
+    with patch.dict("os.environ", {"LOG_LEVEL": "debug"}):
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+
+        settings = get_settings()
+        assert settings.LOG_LEVEL == "DEBUG"
+
+        # Clean up
+        get_settings.cache_clear()
+
+
+def test_logging_level_warning():
+    """Test that logging level WARNING works."""
+    with patch.dict("os.environ", {"LOG_LEVEL": "WARNING"}):
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+
+        setup_logging()
+        root_logger = logging.getLogger()
+
+        assert root_logger.level == logging.WARNING
+
+        # Clean up
+        get_settings.cache_clear()
+
+
+def test_logging_level_error():
+    """Test that logging level ERROR works."""
+    with patch.dict("os.environ", {"LOG_LEVEL": "ERROR"}):
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+
+        setup_logging()
+        root_logger = logging.getLogger()
+
+        assert root_logger.level == logging.ERROR
+
+        # Clean up
+        get_settings.cache_clear()
+
+
+def test_logging_level_critical():
+    """Test that logging level CRITICAL works."""
+    with patch.dict("os.environ", {"LOG_LEVEL": "CRITICAL"}):
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+
+        setup_logging()
+        root_logger = logging.getLogger()
+
+        assert root_logger.level == logging.CRITICAL
+
+        # Clean up
+        get_settings.cache_clear()
 
 
 def test_app_factory_multiple_invocations():
@@ -99,6 +197,10 @@ def test_logging_configuration_removes_duplicate_handlers():
 def test_logging_includes_service_name():
     """Test that logs include service name."""
     with patch.dict("os.environ", {"SERVICE_NAME": "test-service"}):
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+
         setup_logging()
         logger = logging.getLogger(__name__)
 
@@ -111,6 +213,9 @@ def test_logging_includes_service_name():
             success = False
 
         assert success
+
+        # Clean up
+        get_settings.cache_clear()
 
 
 def test_app_startup_logs_configuration():
@@ -169,3 +274,35 @@ def test_logging_with_special_characters(caplog):
         success = False
 
     assert success
+
+
+def test_request_correlation_id_in_logs():
+    """Test that request correlation middleware adds request_id to logs."""
+    from fastapi.testclient import TestClient
+
+    app = create_app()
+    client = TestClient(app)
+
+    # Make a request with custom request ID
+    custom_id = "test-correlation-id-123"
+    response = client.get("/health", headers={"X-Request-ID": custom_id})
+
+    # Verify response includes the request ID
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == custom_id
+
+
+def test_request_correlation_id_generated_when_missing():
+    """Test that request correlation ID is generated when not provided."""
+    from fastapi.testclient import TestClient
+
+    app = create_app()
+    client = TestClient(app)
+
+    # Make a request without request ID
+    response = client.get("/health")
+
+    # Verify response includes a generated request ID
+    assert response.status_code == 200
+    assert "X-Request-ID" in response.headers
+    assert len(response.headers["X-Request-ID"]) > 0

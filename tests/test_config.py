@@ -234,3 +234,131 @@ def test_pubsub_jwt_verification_can_be_enabled():
     ):
         settings = Settings()
         assert settings.PUBSUB_JWT_VERIFICATION_ENABLED is True
+
+
+def test_default_log_level_is_info():
+    """Test that LOG_LEVEL defaults to INFO."""
+    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True):
+        settings = Settings()
+        assert settings.LOG_LEVEL == "INFO"
+
+
+def test_custom_log_level_from_env():
+    """Test that LOG_LEVEL can be set from environment."""
+    with patch.dict(
+        os.environ, {"LOG_LEVEL": "DEBUG", "PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True
+    ):
+        settings = Settings()
+        assert settings.LOG_LEVEL == "DEBUG"
+
+
+def test_log_level_validation_invalid():
+    """Test that invalid LOG_LEVEL falls back to INFO."""
+    with patch.dict(
+        os.environ, {"LOG_LEVEL": "INVALID", "PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True
+    ):
+        settings = Settings()
+        assert settings.LOG_LEVEL == "INFO"
+
+
+def test_log_level_validation_case_insensitive():
+    """Test that LOG_LEVEL is case insensitive."""
+    with patch.dict(
+        os.environ, {"LOG_LEVEL": "debug", "PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True
+    ):
+        settings = Settings()
+        assert settings.LOG_LEVEL == "DEBUG"
+
+
+def test_log_level_validation_with_whitespace():
+    """Test that LOG_LEVEL strips whitespace."""
+    with patch.dict(
+        os.environ, {"LOG_LEVEL": "  ERROR  ", "PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True
+    ):
+        settings = Settings()
+        assert settings.LOG_LEVEL == "ERROR"
+
+
+def test_all_log_levels_are_valid():
+    """Test that all standard log levels are accepted."""
+    valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+    for level in valid_levels:
+        with patch.dict(
+            os.environ, {"LOG_LEVEL": level, "PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True
+        ):
+            settings = Settings()
+            assert settings.LOG_LEVEL == level
+
+
+def test_default_workers_is_1():
+    """Test that WORKERS defaults to 1."""
+    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True):
+        settings = Settings()
+        assert settings.WORKERS == 1
+
+
+def test_custom_workers_from_env():
+    """Test that WORKERS can be set from environment."""
+    with patch.dict(
+        os.environ, {"WORKERS": "4", "PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True
+    ):
+        settings = Settings()
+        assert settings.WORKERS == 4
+
+
+def test_workers_validation_min_boundary():
+    """Test that WORKERS validates minimum value."""
+    with patch.dict(
+        os.environ, {"WORKERS": "0", "PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True
+    ):
+        with pytest.raises(ValidationError, match="greater_than_equal"):
+            Settings()
+
+
+def test_workers_validation_max_boundary():
+    """Test that WORKERS validates maximum value."""
+    with patch.dict(
+        os.environ, {"WORKERS": "17", "PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True
+    ):
+        with pytest.raises(ValidationError, match="less_than_equal"):
+            Settings()
+
+
+def test_execution_api_url_default():
+    """Test that EXECUTION_API_URL defaults to empty string."""
+    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True):
+        settings = Settings()
+        assert settings.EXECUTION_API_URL == ""
+
+
+def test_execution_api_key_default():
+    """Test that EXECUTION_API_KEY defaults to empty string."""
+    with patch.dict(os.environ, {"PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True):
+        settings = Settings()
+        assert settings.EXECUTION_API_KEY == ""
+
+
+def test_execution_api_url_can_be_set():
+    """Test that EXECUTION_API_URL can be set from environment."""
+    with patch.dict(
+        os.environ,
+        {
+            "EXECUTION_API_URL": "https://api.example.com",
+            "PUBSUB_VERIFICATION_TOKEN": "test-token",
+        },
+        clear=True,
+    ):
+        settings = Settings()
+        assert settings.EXECUTION_API_URL == "https://api.example.com"
+
+
+def test_execution_api_key_can_be_set():
+    """Test that EXECUTION_API_KEY can be set from environment."""
+    with patch.dict(
+        os.environ,
+        {"EXECUTION_API_KEY": "secret-api-key", "PUBSUB_VERIFICATION_TOKEN": "test-token"},
+        clear=True,
+    ):
+        settings = Settings()
+        assert settings.EXECUTION_API_KEY == "secret-api-key"

@@ -15,10 +15,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, Response, status
-from google.cloud import firestore
-
-from app.dependencies import get_firestore_client
+from fastapi import APIRouter, Response, status
 
 router = APIRouter(tags=["health"])
 logger = logging.getLogger(__name__)
@@ -39,9 +36,7 @@ async def health_check() -> dict:
 
 
 @router.get("/readiness")
-async def readiness_check(
-    response: Response, client: firestore.Client = Depends(get_firestore_client)
-) -> dict:
+async def readiness_check(response: Response) -> dict:
     """
     Readiness probe endpoint for Cloud Run.
 
@@ -53,7 +48,6 @@ async def readiness_check(
 
     Args:
         response: FastAPI response object for setting status codes
-        client: Firestore client from dependency injection
 
     Returns:
         dict: Status with ready flag and any issues detected
@@ -62,9 +56,10 @@ async def readiness_check(
 
     # Quick Firestore connectivity check (fail fast)
     try:
-        # Try a lightweight operation with timeout
-        # Just check if we can access the client (already initialized)
-        # Actual connectivity is tested during client initialization
+        # Try to get Firestore client - this validates configuration
+        from app.dependencies import get_firestore_client
+
+        client = get_firestore_client()
         if client is None:
             issues.append("Firestore client not initialized")
     except Exception as e:
