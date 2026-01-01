@@ -273,7 +273,9 @@ def test_log_level_validation_case_insensitive():
 def test_log_level_validation_with_whitespace():
     """Test that LOG_LEVEL strips whitespace."""
     with patch.dict(
-        os.environ, {"LOG_LEVEL": "  ERROR  ", "PUBSUB_VERIFICATION_TOKEN": "test-token"}, clear=True
+        os.environ,
+        {"LOG_LEVEL": "  ERROR  ", "PUBSUB_VERIFICATION_TOKEN": "test-token"},
+        clear=True,
     ):
         settings = Settings()
         assert settings.LOG_LEVEL == "ERROR"

@@ -16,8 +16,6 @@
 import logging
 from unittest.mock import patch
 
-import pytest
-
 from app.main import create_app, setup_logging
 
 
@@ -36,7 +34,6 @@ def test_logging_setup_configures_json_format():
 def test_logging_respects_log_level_setting():
     """Test that logging uses LOG_LEVEL from settings."""
     with patch.dict("os.environ", {"LOG_LEVEL": "DEBUG"}):
-        from app.config import Settings
 
         # Clear the cache to force reload
         from app.config import get_settings
@@ -55,7 +52,7 @@ def test_logging_respects_log_level_setting():
 def test_logging_handles_invalid_log_level():
     """Test that invalid LOG_LEVEL falls back to INFO with warning."""
     with patch.dict("os.environ", {"LOG_LEVEL": "INVALID_LEVEL"}):
-        from app.config import Settings, get_settings
+        from app.config import get_settings
 
         get_settings.cache_clear()
 

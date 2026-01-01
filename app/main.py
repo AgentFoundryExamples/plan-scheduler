@@ -43,7 +43,6 @@ class RequestCorrelationMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
 
         # Add to logging context
-        logger = logging.getLogger(__name__)
         old_factory = logging.getLogRecordFactory()
 
         def record_factory(*args, **kwargs):

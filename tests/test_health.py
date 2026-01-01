@@ -13,9 +13,10 @@
 # limitations under the License.
 """Tests for health check endpoint."""
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
 
 from app.main import create_app
 
