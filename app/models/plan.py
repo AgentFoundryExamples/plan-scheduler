@@ -262,14 +262,30 @@ class SpecRecord(BaseModel):
     Status Values:
         - "blocked": Spec is waiting for dependencies or prerequisites
         - "running": Spec is currently being executed
-        - "finished": Spec completed successfully
-        - "failed": Spec execution failed
+        - "finished": Spec completed successfully (terminal)
+        - "failed": Spec execution failed (terminal)
+
+    Terminal vs Informational Statuses:
+        - Terminal statuses ("finished", "failed") trigger state machine transitions
+        - All other statuses are informational and update current_stage without
+          changing the main status field
 
     Execution Metadata:
         - execution_attempts: Number of times execution has been triggered
           (updated by trigger_spec_execution)
         - last_execution_at: Timestamp of most recent execution trigger
           (updated by trigger_spec_execution)
+        - current_stage: Latest stage information, persisted separately from status
+
+    History (spec_history):
+        Each entry in the history list contains:
+        - timestamp (str): ISO 8601 timestamp when the update occurred
+        - received_status (str): Status value from the Pub/Sub message
+        - stage (str | None): Optional stage information
+        - details (str | None): Optional additional details
+        - correlation_id (str | None): Optional correlation ID
+        - message_id (str): Pub/Sub message ID for deduplication
+        - raw_snippet (dict): Snapshot of the Pub/Sub payload
 
     Timestamps are timezone-aware (UTC) to avoid serialization mismatches.
     """
@@ -303,11 +319,18 @@ class SpecRecord(BaseModel):
     )
     current_stage: str | None = Field(
         default=None,
-        description="Optional execution stage/phase (e.g., 'implementation', 'reviewing')",
+        description=(
+            "Optional execution stage/phase (e.g., 'implementation', 'reviewing'). "
+            "Updated by informational status updates, persisted separately from status field."
+        ),
     )
     history: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="History of state transitions (can be empty initially)",
+        description=(
+            "History of state transitions (spec_history entries). Each entry contains: "
+            "timestamp, received_status, stage, details, correlation_id, message_id, raw_snippet. "
+            "Can be empty initially, backfilled with default values for historical specs."
+        ),
     )
 
     @field_validator("created_at", "updated_at", "last_execution_at", mode="after")

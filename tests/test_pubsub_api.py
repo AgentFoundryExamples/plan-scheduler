@@ -182,16 +182,29 @@ class TestSpecStatusEndpointPayloadValidation:
         assert response.status_code == 400
 
     @patch("app.api.pubsub.get_settings")
-    def test_invalid_status_value_returns_400(self, mock_get_settings, client):
-        """Test that invalid status value returns 400."""
+    @patch("app.api.pubsub.get_client")
+    @patch("app.api.pubsub.process_spec_status_update")
+    def test_custom_status_value_accepted(
+        self, mock_process_update, mock_get_client, mock_get_settings, client
+    ):
+        """Test that custom/unknown status values are accepted as informational statuses."""
         mock_settings = MagicMock()
         mock_settings.PUBSUB_VERIFICATION_TOKEN = "test-token"
         mock_get_settings.return_value = mock_settings
 
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_process_update.return_value = {
+            "success": True,
+            "action": "updated",
+            "message": "Status updated",
+        }
+
         payload = {
             "plan_id": str(uuid.uuid4()),
             "spec_index": 0,
-            "status": "invalid-status",
+            "status": "CUSTOM_STATUS",
         }
         encoded_data = base64.b64encode(json.dumps(payload).encode()).decode()
         envelope = {
@@ -207,7 +220,8 @@ class TestSpecStatusEndpointPayloadValidation:
             json=envelope,
             headers={"x-goog-pubsub-verification-token": "test-token"},
         )
-        assert response.status_code == 400
+        assert response.status_code == 204
+        mock_process_update.assert_called_once()
 
 
 class TestSpecStatusEndpointProcessing:

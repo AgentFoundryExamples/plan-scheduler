@@ -323,6 +323,46 @@ The Pub/Sub integration uses a two-layer structure:
 
 All models enforce that `plan_id` and `spec_index` are present to ensure downstream services can always resolve the relevant spec for updates.
 
+### Unified Schema Contract
+
+**Required Fields (Always Present):**
+- `plan_id` (str): UUID identifying the plan
+- `spec_index` (int): Zero-based spec index (>= 0)
+- `status` (str): Any string value indicating execution status
+
+**Optional Metadata Fields:**
+- `stage` (str): Current execution phase/stage
+- `details` (str): Additional contextual information
+- `correlation_id` (str): Cross-system tracking identifier
+- `timestamp` (str): ISO 8601 timestamp when status occurred
+
+**Terminal vs Informational Statuses:**
+
+The schema distinguishes between two types of status values:
+
+1. **Terminal Statuses** (trigger state machine transitions):
+   - `"finished"`: Spec completed successfully → advance to next spec
+   - `"failed"`: Spec execution failed → mark plan as failed, stop execution
+
+2. **Informational Statuses** (update metadata only):
+   - All other status values (e.g., `"blocked"`, `"running"`, `"PROCESSING"`, `"custom-state"`)
+   - Do NOT change spec's main status field
+   - Update `current_stage` if `stage` field is provided
+   - Append to history with all metadata
+   - Do NOT trigger state transitions
+
+**Status String Handling:**
+- Any string value is accepted (no validation pattern enforced)
+- Unknown or custom statuses are stored verbatim
+- Case-sensitive (e.g., `"FINISHED"` is treated as informational, not terminal)
+- Uppercase or mixed-case variants do not trigger transitions
+
+**Schema Evolution:**
+- New optional fields can be added without breaking existing integrators
+- Missing optional fields default to `None`
+- Historical specs without `history` arrays are backfilled with empty defaults
+- Status progression remains intact during migrations
+
 ### SpecStatusPayload
 
 The decoded inner payload containing spec execution status information.
@@ -330,11 +370,22 @@ The decoded inner payload containing spec execution status information.
 ```python
 from app.models.pubsub import SpecStatusPayload
 
+# Example with all fields
 payload = SpecStatusPayload(
     plan_id="550e8400-e29b-41d4-a716-446655440000",
     spec_index=0,
     status="finished",
-    stage="implementation"  # optional
+    stage="implementation",  # optional
+    details="Implementation completed successfully",  # optional
+    correlation_id="trace-abc-123",  # optional
+    timestamp="2025-01-01T12:00:00Z"  # optional
+)
+
+# Minimal example with required fields only
+minimal_payload = SpecStatusPayload(
+    plan_id="550e8400-e29b-41d4-a716-446655440000",
+    spec_index=0,
+    status="running"
 )
 ```
 
@@ -342,24 +393,76 @@ payload = SpecStatusPayload(
 
 - `plan_id` (str, **required**): UUID string identifying the plan. Must be present for spec resolution.
 - `spec_index` (int, **required**): Zero-based index of the spec within the plan. Must be >= 0. Required for spec resolution.
-- `status` (str, **required**): Current status of spec execution. Must be one of:
-  - `"blocked"` - Waiting for dependencies
-  - `"running"` - Currently executing
-  - `"finished"` - Completed successfully
-  - `"failed"` - Execution failed
+- `status` (str, **required**): Current status of spec execution. Any string value is accepted:
+  - **Terminal Statuses** (trigger state transitions): `"finished"`, `"failed"`
+  - **Standard Informational Statuses**: `"blocked"`, `"running"`
+  - **Custom Statuses**: Any other string value (e.g., `"initializing"`, `"PROCESSING"`, `"custom-state"`)
 - `stage` (str, **optional**): Execution stage/phase information for progress tracking (e.g., "analyzing", "implementing", "testing", "reviewing")
+- `details` (str, **optional**): Additional details about the status update (e.g., error messages, progress information)
+- `correlation_id` (str, **optional**): Correlation ID for tracking related events across systems
+- `timestamp` (str, **optional**): ISO 8601 timestamp for when this status occurred (e.g., "2025-01-01T12:00:00Z")
 
 **Validation:**
 - `plan_id` must be a non-empty string. UUID format is validated at the API endpoint level (POST /pubsub/spec-status) which converts the string to UUID and validates format. Invalid UUIDs will cause the endpoint to return 400 Bad Request with validation error details.
 - `spec_index` must be a non-negative integer
-- `status` must match the regex pattern: `^(blocked|running|finished|failed)$`
-- `stage` is optional and can be any string
+- `status` accepts any string value - no pattern validation is enforced
+- All optional fields (`stage`, `details`, `correlation_id`, `timestamp`) default to `None` if not provided
+- Unknown or custom status strings are stored verbatim in history without rejection
+
+**Terminal vs Informational Statuses:**
+- **Terminal Statuses** (`"finished"`, `"failed"`): Trigger state machine transitions
+  - `"finished"`: Marks spec as completed, advances to next spec, triggers next execution
+  - `"failed"`: Marks spec and plan as failed, stops further execution
+- **Informational Statuses** (all other values): Update metadata without triggering transitions
+  - Update `current_stage` field if `stage` is provided
+  - Append to history with timestamp and all metadata
+  - Do NOT change the spec's main `status` field
+  - Do NOT trigger state machine transitions or next spec execution
 
 **Usage Notes:**
-- **Terminal Statuses**: `"finished"` and `"failed"` trigger state machine transitions
-- **Intermediate Statuses**: `"blocked"` and `"running"` with stage update `current_stage` field
 - Execution services **must** include both `plan_id` and `spec_index` in every status update
 - `stage` is useful for tracking progress within a spec execution (e.g., multiple phases)
+- `details` can contain error messages, progress updates, or any contextual information
+- `correlation_id` helps trace events across distributed systems
+- `timestamp` allows execution services to report when events occurred (vs when received)
+- Unknown status strings like `"CUSTOM_STATE"` or `"processing"` are treated as informational
+
+**Examples:**
+
+```python
+# Terminal status - triggers transition
+finished = SpecStatusPayload(
+    plan_id="abc-123",
+    spec_index=0,
+    status="finished"
+)
+
+# Informational status with stage
+progress = SpecStatusPayload(
+    plan_id="abc-123",
+    spec_index=1,
+    status="running",
+    stage="implementing",
+    details="Working on feature X"
+)
+
+# Custom informational status
+custom = SpecStatusPayload(
+    plan_id="abc-123",
+    spec_index=2,
+    status="WAITING_FOR_REVIEW",
+    correlation_id="review-session-456"
+)
+
+# Terminal failure with details
+failure = SpecStatusPayload(
+    plan_id="abc-123",
+    spec_index=3,
+    status="failed",
+    details="Timeout after 30 minutes",
+    correlation_id="execution-789"
+)
+```
 
 ### PubSubMessage
 

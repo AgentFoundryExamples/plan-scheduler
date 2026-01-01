@@ -119,6 +119,46 @@ class TestProcessSpecStatusUpdateBasics:
                 client=mock_client,
             )
 
+    def test_function_accepts_optional_metadata_fields(self, mock_firestore_client):
+        """Test that function accepts optional metadata fields."""
+        plan_id = str(uuid.uuid4())
+
+        # Mock plan not found scenario (simplest case)
+        mock_plan_snapshot = MagicMock()
+        mock_plan_snapshot.exists = False
+
+        mock_plan_ref = MagicMock()
+        mock_plan_ref.get.return_value = mock_plan_snapshot
+
+        mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+        # Mock transactional decorator to execute immediately
+        def mock_transactional(func):
+            def wrapper(transaction):
+                return func(transaction)
+
+            return wrapper
+
+        with patch("app.services.firestore_service.firestore.transactional", mock_transactional):
+            # Should not raise an error with optional fields
+            result = process_spec_status_update(
+                plan_id=plan_id,
+                spec_index=0,
+                status="running",
+                stage="implementation",
+                message_id="test-msg",
+                raw_payload_snippet={},
+                details="Testing optional fields",
+                correlation_id="test-correlation-123",
+                timestamp="2025-01-01T12:00:00Z",
+                client=mock_firestore_client,
+            )
+
+        # Verify function executed successfully
+        assert isinstance(result, dict)
+        assert "success" in result
+        assert "action" in result
+
 
 class TestProcessSpecStatusUpdateIntegrationNotes:
     """
