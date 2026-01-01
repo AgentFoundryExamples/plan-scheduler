@@ -580,6 +580,125 @@ Response:
 }
 ```
 
+## Pub/Sub Integration
+
+### Unified Pub/Sub Schema Contract
+
+The Plan Scheduler defines a unified payload schema for all spec status updates via Pub/Sub. This schema supports both terminal and non-terminal (informational) status updates through a single topic.
+
+#### Required Fields
+
+Every Pub/Sub message **must** include:
+- `plan_id` (string): UUID identifying the plan
+- `spec_index` (integer): Zero-based spec index (>= 0)
+- `status` (string): Any string indicating execution status
+
+#### Optional Metadata Fields
+
+Messages **may** include:
+- `stage` (string): Current execution phase (e.g., "analyzing", "implementing", "reviewing")
+- `details` (string): Additional contextual information (e.g., error messages, progress notes)
+- `correlation_id` (string): Cross-system tracking identifier for distributed tracing
+- `timestamp` (string): ISO 8601 timestamp when the status occurred (vs when received)
+
+#### Terminal vs Informational Statuses
+
+The schema distinguishes between two categories of status values:
+
+**Terminal Statuses** (trigger state transitions):
+- `"finished"`: Spec completed successfully
+  - Marks spec as finished
+  - Increments plan's `completed_specs` counter
+  - Advances to next spec (or marks plan complete)
+  - Triggers execution for next spec
+- `"failed"`: Spec execution failed
+  - Marks spec as failed
+  - Marks entire plan as failed
+  - Stops further spec execution
+
+**Informational Statuses** (update metadata only):
+- All other status values: `"blocked"`, `"running"`, `"PROCESSING"`, custom strings, etc.
+- Do NOT change spec's main status field
+- Update `current_stage` field if `stage` is provided
+- Append to history with timestamp and all metadata
+- Do NOT trigger state machine transitions
+
+**Important Notes:**
+- Status strings are **case-sensitive**
+- `"finished"` and `"failed"` (lowercase) are the only terminal statuses
+- `"FINISHED"`, `"Finished"`, or any other variation is treated as informational
+- Unknown or custom status strings are accepted and stored verbatim
+- No validation pattern is enforced on status values
+
+#### Example Payloads
+
+**Terminal Status (Finished):**
+```json
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+  "spec_index": 0,
+  "status": "finished"
+}
+```
+
+**Terminal Status (Failed with Details):**
+```json
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+  "spec_index": 1,
+  "status": "failed",
+  "details": "Execution timeout after 30 minutes",
+  "correlation_id": "exec-trace-789"
+}
+```
+
+**Informational Status (Progress Update):**
+```json
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+  "spec_index": 2,
+  "status": "running",
+  "stage": "implementing",
+  "details": "Processing feature X, 50% complete",
+  "correlation_id": "session-abc-123",
+  "timestamp": "2025-01-01T14:30:00Z"
+}
+```
+
+**Informational Status (Custom State):**
+```json
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440000",
+  "spec_index": 3,
+  "status": "WAITING_FOR_REVIEW",
+  "stage": "code-review",
+  "correlation_id": "review-session-456"
+}
+```
+
+#### Spec History
+
+All status updates are appended to the spec's `history` array in Firestore. Each history entry contains:
+- `timestamp`: ISO 8601 timestamp when update was processed
+- `received_status`: The status value from the message
+- `stage`: Optional stage information
+- `details`: Optional additional details
+- `correlation_id`: Optional correlation ID
+- `message_id`: Pub/Sub message ID for deduplication
+- `raw_snippet`: Full payload snapshot
+
+Historical specs without `spec_history` are automatically backfilled with empty arrays, preserving existing status progression.
+
+#### Schema Evolution
+
+The unified schema supports backward-compatible evolution:
+- New optional fields can be added without breaking existing integrators
+- Missing optional fields default to `None`
+- Unknown status values are accepted and stored
+- Integrators can use custom status strings for domain-specific states
+
+For complete schema reference and validation details, see [app/models/README.md](app/models/README.md#unified-schema-contract).
+
 ### Pub/Sub Webhook
 
 **POST /pubsub/spec-status**
