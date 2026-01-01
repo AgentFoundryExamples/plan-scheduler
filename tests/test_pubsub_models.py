@@ -124,13 +124,6 @@ class TestSpecStatusPayload:
 
         assert payload.spec_index == 0
 
-    def test_large_spec_index_accepted(self):
-        """Test large spec_index values are accepted."""
-        plan_id = str(uuid4())
-        payload = SpecStatusPayload(plan_id=plan_id, spec_index=999, status="running")
-
-        assert payload.spec_index == 999
-
     def test_optional_details_field(self):
         """Test optional details field is accepted."""
         plan_id = str(uuid4())

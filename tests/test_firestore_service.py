@@ -2431,8 +2431,8 @@ def test_get_plan_with_specs_logs_successful_fetch(mock_firestore_client, caplog
 class TestUnifiedStatusWorkflowFirestoreService:
     """Test unified status workflow features in Firestore service."""
 
-    def test_process_spec_status_update_history_bounded_growth(self):
-        """Test that history array grows but doesn't exceed reasonable bounds."""
+    def test_process_spec_status_update_history_growth_with_many_entries(self):
+        """Test that history array can grow to accommodate many status updates."""
         from app.services.firestore_service import process_spec_status_update
 
         plan_id = "test-plan-id"

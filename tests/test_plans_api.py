@@ -1403,6 +1403,11 @@ class TestUnifiedStatusWorkflowPlanAPI:
             assert response.status_code == 200
             data = response.json()
 
+            # NOTE: This test verifies the Plans API correctly exposes current_stage
+            # from Firestore data. The actual derivation/update of current_stage from
+            # history is tested in test_firestore_service.py. Here we verify the API
+            # correctly returns the current_stage field that was set by the service layer.
+
             # Verify finished spec shows final current_stage
             assert data["specs"][0]["spec_index"] == 0
             assert data["specs"][0]["status"] == "finished"

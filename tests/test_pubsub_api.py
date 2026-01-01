@@ -596,6 +596,11 @@ class TestUnifiedStatusWorkflow:
         # Verify process_spec_status_update was called 4 times
         assert len(call_results) == 4
 
+        # NOTE: This test verifies the API layer correctly calls process_spec_status_update
+        # with the right parameters. The actual state persistence (history entries, current_stage)
+        # is tested separately in test_firestore_service.py where we can verify Firestore updates.
+        # Here we focus on the HTTP endpoint behavior and parameter passing.
+
         # Verify non-terminal updates had correct status
         for idx in range(3):
             assert call_results[idx]["status"] == "running"
