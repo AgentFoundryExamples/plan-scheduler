@@ -324,6 +324,15 @@ class SpecRecord(BaseModel):
             "Updated by informational status updates, persisted separately from status field."
         ),
     )
+    detailed_status: str | None = Field(
+        default=None,
+        description=(
+            "Optional detailed status string for non-terminal statuses. "
+            "Captures intermediate/informational status values that don't trigger "
+            "state transitions. Updated by non-terminal status updates, persisted "
+            "separately from main status field."
+        ),
+    )
     history: list[dict[str, Any]] = Field(
         default_factory=list,
         description=(

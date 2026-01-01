@@ -555,18 +555,26 @@ def process_spec_status_update(
     This function implements the core orchestration logic for Pub/Sub status updates:
     1. Load plan and target spec within a transaction
     2. Verify ordering (detect out-of-order or stale terminal events)
-    3. Check for duplicate messageIds to prevent double-processing
+    3. Check for duplicate correlation_id (primary) or messageId (fallback) to prevent
+       double-processing
     4. Append status history entry with timestamp, status, stage, details,
        correlation_id, messageId, raw snippet
     5. Update spec and plan fields based on status type:
        - "finished": Mark spec finished, advance plan, trigger next spec (terminal)
        - "failed": Mark spec/plan failed, no further triggers (terminal)
-       - All other statuses: Update stage field, keep main status unchanged (informational)
+       - All other statuses: Update stage and detailed_status fields, keep main status
+         unchanged (informational)
 
     Terminal vs Informational Statuses:
     - Terminal statuses ("finished", "failed") trigger state machine transitions
     - All other status values are informational and stored in history without
       changing the spec's main status field or triggering transitions
+
+    Idempotency:
+    - Primary: correlation_id (when provided) - allows external systems to ensure
+      exactly-once processing of business events
+    - Fallback: messageId - prevents duplicate Pub/Sub message processing
+    - Both are stored in history and checked before applying updates
 
     TRANSACTION STRATEGY:
     Uses Firestore transactions to ensure atomicity. All reads must happen before writes.
@@ -585,7 +593,7 @@ def process_spec_status_update(
         message_id: Pub/Sub message ID for deduplication
         raw_payload_snippet: Snippet of raw payload for history
         details: Optional additional details about the status update
-        correlation_id: Optional correlation ID for tracking related events
+        correlation_id: Optional correlation ID for idempotency (primary key)
         timestamp: Optional timestamp for when this status occurred (ISO 8601 format)
         client: Optional Firestore client (uses get_client() if not provided)
 
@@ -655,9 +663,29 @@ def process_spec_status_update(
                 f"Spec document {plan_id}/specs/{spec_index} exists but is empty"
             )
 
-        # Step 3: Check for duplicate messageId
+        # Step 3: Check for duplicate messageId or correlation_id (idempotency)
+        # Priority: correlation_id (if provided) > message_id
+        # This prevents duplicate processing of terminal events
         history = spec_data.get("history", [])
         for entry in history:
+            # Check correlation_id first if both are provided
+            if correlation_id and entry.get("correlation_id") == correlation_id:
+                result["action"] = "duplicate"
+                result["success"] = True
+                result["message"] = f"Duplicate correlation_id {correlation_id} skipped"
+                logger.info(
+                    f"Duplicate event with correlation_id {correlation_id} detected for "
+                    f"plan {plan_id} spec {spec_index}, skipping",
+                    extra={
+                        "plan_id": plan_id,
+                        "spec_index": spec_index,
+                        "correlation_id": correlation_id,
+                        "message_id": message_id,
+                        "idempotency_key": "correlation_id",
+                    },
+                )
+                return
+            # Fallback to message_id check
             if entry.get("message_id") == message_id:
                 result["action"] = "duplicate"
                 result["success"] = True
@@ -669,6 +697,8 @@ def process_spec_status_update(
                         "plan_id": plan_id,
                         "spec_index": spec_index,
                         "message_id": message_id,
+                        "correlation_id": correlation_id,
+                        "idempotency_key": "message_id",
                     },
                 )
                 return
@@ -770,6 +800,8 @@ def process_spec_status_update(
                         "plan_id": plan_id,
                         "total_specs": total_specs,
                         "completed_specs": completed_specs,
+                        "is_terminal": True,
+                        "event_type": "terminal_plan_finished",
                     },
                 )
             else:
@@ -799,6 +831,8 @@ def process_spec_status_update(
                                 "plan_id": plan_id,
                                 "spec_index": next_spec_index,
                                 "previous_spec": spec_index,
+                                "is_terminal": True,
+                                "event_type": "terminal_spec_finished_with_next",
                             },
                         )
                     else:
@@ -813,13 +847,20 @@ def process_spec_status_update(
                                 "plan_id": plan_id,
                                 "spec_index": next_spec_index,
                                 "status": next_spec_data.get("status") if next_spec_data else None,
+                                "is_terminal": True,
+                                "event_type": "terminal_spec_finished",
                             },
                         )
                 else:
                     result["message"] = f"Spec {spec_index} finished"
                     logger.warning(
                         f"Next spec {next_spec_index} not found in plan {plan_id}",
-                        extra={"plan_id": plan_id, "spec_index": next_spec_index},
+                        extra={
+                            "plan_id": plan_id,
+                            "spec_index": next_spec_index,
+                            "is_terminal": True,
+                            "event_type": "terminal_spec_finished",
+                        },
                     )
 
         elif status == "failed":
@@ -831,21 +872,35 @@ def process_spec_status_update(
             result["message"] = f"Spec {spec_index} and plan {plan_id} marked as failed"
             logger.info(
                 f"Spec {spec_index} failed in plan {plan_id}, plan marked as failed",
-                extra={"plan_id": plan_id, "spec_index": spec_index, "status": status},
+                extra={
+                    "plan_id": plan_id,
+                    "spec_index": spec_index,
+                    "status": status,
+                    "is_terminal": True,
+                    "event_type": "terminal_spec_failed",
+                },
             )
 
         else:
-            # Intermediate status - update stage field but keep main status unchanged
+            # Intermediate/non-terminal status - update stage and detailed_status fields
+            # but keep main status unchanged
             if stage:
                 spec_updates["current_stage"] = stage
-            result["message"] = f"Spec {spec_index} stage updated: {stage if stage else 'none'}"
+            # Store the non-terminal status value in detailed_status field
+            spec_updates["detailed_status"] = status
+            result["message"] = (
+                f"Spec {spec_index} non-terminal update: status={status}, "
+                f"stage={stage if stage else 'none'}"
+            )
             logger.info(
-                f"Intermediate status update for spec {spec_index} in plan {plan_id}",
+                f"Non-terminal status update for spec {spec_index} in plan {plan_id}",
                 extra={
                     "plan_id": plan_id,
                     "spec_index": spec_index,
                     "status": status,
                     "stage": stage,
+                    "is_terminal": False,
+                    "event_type": "non_terminal_update",
                 },
             )
 
