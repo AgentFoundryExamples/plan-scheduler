@@ -119,7 +119,7 @@ class SpecStatusOut(BaseModel):
     """
 
     spec_index: int = Field(..., description="Index of the spec in the plan", ge=0)
-    status: str = Field(
+    status: SpecStatus = Field(
         ...,
         description="Spec status: blocked, running, finished, or failed",
     )
@@ -128,23 +128,6 @@ class SpecStatusOut(BaseModel):
         description="Optional execution stage/phase (e.g., 'implementation', 'reviewing')",
     )
     updated_at: datetime = Field(..., description="Timestamp when spec was last updated (UTC)")
-
-    @field_validator("status")
-    @classmethod
-    def validate_status(cls, v: str) -> str:
-        """Validate status is one of the supported values."""
-        valid_statuses = {s.value for s in SpecStatus}
-        if v not in valid_statuses:
-            raise ValueError(f"Invalid spec status: {v}. Must be one of {sorted(valid_statuses)}")
-        return v
-
-    @field_validator("spec_index")
-    @classmethod
-    def validate_spec_index(cls, v: int) -> int:
-        """Validate spec_index is non-negative."""
-        if v < 0:
-            raise ValueError("spec_index must be non-negative")
-        return v
 
     @field_validator("updated_at", mode="before")
     @classmethod
@@ -171,7 +154,7 @@ class PlanStatusOut(BaseModel):
     """
 
     plan_id: str = Field(..., description="Plan identifier as UUID string")
-    overall_status: str = Field(
+    overall_status: PlanStatus = Field(
         ...,
         description="Overall plan status: running, finished, or failed",
     )
@@ -184,15 +167,6 @@ class PlanStatusOut(BaseModel):
         description="Index of the currently running spec (null if none running)",
     )
     specs: list[SpecStatusOut] = Field(..., description="List of spec statuses")
-
-    @field_validator("overall_status")
-    @classmethod
-    def validate_overall_status(cls, v: str) -> str:
-        """Validate overall_status is one of the supported values."""
-        valid_statuses = {s.value for s in PlanStatus}
-        if v not in valid_statuses:
-            raise ValueError(f"Invalid plan status: {v}. Must be one of {sorted(valid_statuses)}")
-        return v
 
     @field_validator("created_at", "updated_at", mode="before")
     @classmethod
@@ -235,14 +209,15 @@ class PlanStatusOut(BaseModel):
         ]
 
         # Compute completed_specs
-        completed_specs = sum(1 for spec in spec_records if spec.status == "finished")
+        completed_specs = sum(
+            1 for spec in spec_records if spec.status == SpecStatus.FINISHED.value
+        )
 
         # Compute current_spec_index (first running spec, or None if none)
-        current_spec_index = None
-        for spec in spec_records:
-            if spec.status == "running":
-                current_spec_index = spec.spec_index
-                break
+        current_spec_index = next(
+            (spec.spec_index for spec in spec_records if spec.status == SpecStatus.RUNNING.value),
+            None,
+        )
 
         return cls(
             plan_id=plan_record.plan_id,

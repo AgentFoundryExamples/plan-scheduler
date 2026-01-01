@@ -974,7 +974,8 @@ class TestSpecStatusOut:
 
         errors = exc_info.value.errors()
         assert any("status" in str(e) for e in errors)
-        assert any("Invalid spec status" in str(e) for e in errors)
+        # Enum validation error message
+        assert any("enum" in str(e).lower() for e in errors)
 
     def test_spec_status_out_stage_is_optional(self):
         """Test SpecStatusOut allows stage to be None."""
@@ -1116,7 +1117,8 @@ class TestPlanStatusOut:
 
         errors = exc_info.value.errors()
         assert any("overall_status" in str(e) for e in errors)
-        assert any("Invalid plan status" in str(e) for e in errors)
+        # Enum validation error message
+        assert any("enum" in str(e).lower() for e in errors)
 
     def test_plan_status_out_rejects_invalid_status_string(self):
         """Test PlanStatusOut rejects invalid status string."""
@@ -1134,7 +1136,8 @@ class TestPlanStatusOut:
             )
 
         errors = exc_info.value.errors()
-        assert any("Invalid plan status" in str(e) for e in errors)
+        # Enum validation error message
+        assert any("enum" in str(e).lower() for e in errors)
 
     def test_plan_status_out_current_spec_index_can_be_none(self):
         """Test PlanStatusOut allows current_spec_index to be None."""
