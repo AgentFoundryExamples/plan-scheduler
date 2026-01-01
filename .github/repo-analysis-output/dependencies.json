@@ -23,9 +23,13 @@
       "path": "app/api/health.py",
       "type": "file",
       "external_dependencies": {
-        "stdlib": [],
+        "stdlib": [
+          "logging"
+        ],
         "third-party": [
-          "fastapi.APIRouter"
+          "fastapi.APIRouter",
+          "fastapi.Response",
+          "fastapi.status"
         ]
       }
     },
@@ -73,10 +77,12 @@
       "external_dependencies": {
         "stdlib": [
           "functools.lru_cache",
-          "logging"
+          "logging",
+          "sys"
         ],
         "third-party": [
           "pydantic.Field",
+          "pydantic.field_validator",
           "pydantic_settings.BaseSettings",
           "pydantic_settings.SettingsConfigDict"
         ]
@@ -104,12 +110,16 @@
       "external_dependencies": {
         "stdlib": [
           "contextlib.asynccontextmanager",
+          "contextvars",
           "logging",
-          "sys"
+          "sys",
+          "uuid"
         ],
         "third-party": [
           "fastapi.FastAPI",
-          "pythonjsonlogger.json.JsonFormatter"
+          "fastapi.Request",
+          "pythonjsonlogger.json.JsonFormatter",
+          "starlette.middleware.base.BaseHTTPMiddleware"
         ]
       }
     },
@@ -301,7 +311,9 @@
       "path": "tests/test_health.py",
       "type": "file",
       "external_dependencies": {
-        "stdlib": [],
+        "stdlib": [
+          "unittest.mock.patch"
+        ],
         "third-party": [
           "fastapi.testclient.TestClient",
           "pytest"
@@ -317,7 +329,10 @@
           "logging",
           "unittest.mock.patch"
         ],
-        "third-party": []
+        "third-party": [
+          "fastapi.testclient.TestClient",
+          "pytest"
+        ]
       }
     },
     {
@@ -425,6 +440,10 @@
     }
   ],
   "edges": [
+    {
+      "source": "app/api/health.py",
+      "target": "app/dependencies.py"
+    },
     {
       "source": "app/api/plans.py",
       "target": "app/dependencies.py"
@@ -562,6 +581,10 @@
       "target": "app/main.py"
     },
     {
+      "source": "tests/test_logging.py",
+      "target": "app/config.py"
+    },
+    {
       "source": "tests/test_plan_models.py",
       "target": "app/models/plan.py"
     },
@@ -606,6 +629,7 @@
     "stdlib": [
       "base64",
       "contextlib.asynccontextmanager",
+      "contextvars",
       "datetime.UTC",
       "datetime.datetime",
       "enum.Enum",
@@ -629,6 +653,7 @@
       "fastapi.HTTPException",
       "fastapi.Header",
       "fastapi.Query",
+      "fastapi.Request",
       "fastapi.Response",
       "fastapi.status",
       "fastapi.testclient.TestClient",
@@ -643,9 +668,10 @@
       "pydantic_settings.BaseSettings",
       "pydantic_settings.SettingsConfigDict",
       "pytest",
-      "pythonjsonlogger.json.JsonFormatter"
+      "pythonjsonlogger.json.JsonFormatter",
+      "starlette.middleware.base.BaseHTTPMiddleware"
     ],
-    "stdlib_count": 18,
-    "third-party_count": 20
+    "stdlib_count": 19,
+    "third-party_count": 22
   }
 }

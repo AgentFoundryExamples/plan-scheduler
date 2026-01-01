@@ -9,18 +9,19 @@ Includes classification of external dependencies as stdlib vs third-party.
 ## Statistics
 
 - **Total files**: 28
-- **Intra-repo dependencies**: 44
-- **External stdlib dependencies**: 18
-- **External third-party dependencies**: 20
+- **Intra-repo dependencies**: 46
+- **External stdlib dependencies**: 19
+- **External third-party dependencies**: 22
 
 ## External Dependencies
 
 ### Standard Library / Core Modules
 
-Total: 18 unique modules
+Total: 19 unique modules
 
 - `base64`
 - `contextlib.asynccontextmanager`
+- `contextvars`
 - `datetime.UTC`
 - `datetime.datetime`
 - `enum.Enum`
@@ -40,13 +41,14 @@ Total: 18 unique modules
 
 ### Third-Party Packages
 
-Total: 20 unique packages
+Total: 22 unique packages
 
 - `fastapi.APIRouter`
 - `fastapi.FastAPI`
 - `fastapi.HTTPException`
 - `fastapi.Header`
 - `fastapi.Query`
+- `fastapi.Request`
 - `fastapi.Response`
 - `fastapi.status`
 - `fastapi.testclient.TestClient`
@@ -61,17 +63,17 @@ Total: 20 unique packages
 - `pydantic_settings.BaseSettings`
 - `pydantic_settings.SettingsConfigDict`
 - `pytest`
-- `pythonjsonlogger.json.JsonFormatter`
+- ... and 2 more (see JSON for full list)
 
 ## Most Depended Upon Files (Intra-Repo)
 
 - `app/models/plan.py` (12 dependents)
 - `app/services/firestore_service.py` (9 dependents)
-- `app/config.py` (7 dependents)
+- `app/config.py` (8 dependents)
 - `app/services/execution_service.py` (4 dependents)
 - `app/main.py` (4 dependents)
+- `app/dependencies.py` (3 dependents)
 - `app/models/pubsub.py` (3 dependents)
-- `app/dependencies.py` (2 dependents)
 - `app/api/health.py` (1 dependents)
 - `app/api/plans.py` (1 dependents)
 - `app/api/pubsub.py` (1 dependents)

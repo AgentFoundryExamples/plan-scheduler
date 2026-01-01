@@ -29,8 +29,8 @@ Total files: 28
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for health  
-**Size:** 0.85 KB  
-**LOC:** 11  
+**Size:** 2.58 KB  
+**LOC:** 51  
 **TODOs/FIXMEs:** 0  
 
 ## app/api/plans.py
@@ -56,8 +56,8 @@ Total files: 28
 **Role:** configuration  
 **Role Justification:** configuration file name 'config'  
 **Summary:** Python configuration file (role: configuration)  
-**Size:** 3.40 KB  
-**LOC:** 59  
+**Size:** 5.13 KB  
+**LOC:** 102  
 **TODOs/FIXMEs:** 0  
 
 ## app/dependencies.py
@@ -74,8 +74,8 @@ Total files: 28
 **Role:** entry-point  
 **Role Justification:** common entry point name 'main'  
 **Summary:** Python main entry point (role: entry-point)  
-**Size:** 4.38 KB  
-**LOC:** 87  
+**Size:** 6.24 KB  
+**LOC:** 121  
 **TODOs/FIXMEs:** 0  
 
 ## app/models/__init__.py
@@ -155,8 +155,8 @@ Total files: 28
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 8.34 KB  
-**LOC:** 171  
+**Size:** 12.60 KB  
+**LOC:** 272  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_dependencies.py
@@ -191,8 +191,8 @@ Total files: 28
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 2.40 KB  
-**LOC:** 45  
+**Size:** 4.90 KB  
+**LOC:** 89  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_logging.py
@@ -200,8 +200,8 @@ Total files: 28
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 4.81 KB  
-**LOC:** 104  
+**Size:** 8.15 KB  
+**LOC:** 170  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_plan_models.py
@@ -227,7 +227,7 @@ Total files: 28
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 27.47 KB  
+**Size:** 27.49 KB  
 **LOC:** 658  
 **TODOs/FIXMEs:** 0  
 
