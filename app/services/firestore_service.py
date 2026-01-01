@@ -665,43 +665,43 @@ def process_spec_status_update(
 
         # Step 3: Check for duplicate messageId or correlation_id (idempotency)
         # Priority: correlation_id (if provided) > message_id
-        # This prevents duplicate processing of terminal events
         history = spec_data.get("history", [])
-        for entry in history:
-            # Check correlation_id first if both are provided
-            if correlation_id and entry.get("correlation_id") == correlation_id:
-                result["action"] = "duplicate"
-                result["success"] = True
-                result["message"] = f"Duplicate correlation_id {correlation_id} skipped"
-                logger.info(
-                    f"Duplicate event with correlation_id {correlation_id} detected for "
-                    f"plan {plan_id} spec {spec_index}, skipping",
-                    extra={
-                        "plan_id": plan_id,
-                        "spec_index": spec_index,
-                        "correlation_id": correlation_id,
-                        "message_id": message_id,
-                        "idempotency_key": "correlation_id",
-                    },
-                )
-                return
-            # Fallback to message_id check
-            if entry.get("message_id") == message_id:
-                result["action"] = "duplicate"
-                result["success"] = True
-                result["message"] = f"Duplicate message {message_id} skipped"
-                logger.info(
-                    f"Duplicate Pub/Sub message {message_id} detected for "
-                    f"plan {plan_id} spec {spec_index}, skipping",
-                    extra={
-                        "plan_id": plan_id,
-                        "spec_index": spec_index,
-                        "message_id": message_id,
-                        "correlation_id": correlation_id,
-                        "idempotency_key": "message_id",
-                    },
-                )
-                return
+
+        # Check for duplicate correlation_id first across all history entries
+        if correlation_id and any(e.get("correlation_id") == correlation_id for e in history):
+            result["action"] = "duplicate"
+            result["success"] = True
+            result["message"] = f"Duplicate correlation_id {correlation_id} skipped"
+            logger.info(
+                f"Duplicate event with correlation_id {correlation_id} detected for "
+                f"plan {plan_id} spec {spec_index}, skipping",
+                extra={
+                    "plan_id": plan_id,
+                    "spec_index": spec_index,
+                    "correlation_id": correlation_id,
+                    "message_id": message_id,
+                    "idempotency_key": "correlation_id",
+                },
+            )
+            return
+
+        # Fallback to message_id check across all history entries
+        if any(e.get("message_id") == message_id for e in history):
+            result["action"] = "duplicate"
+            result["success"] = True
+            result["message"] = f"Duplicate message {message_id} skipped"
+            logger.info(
+                f"Duplicate Pub/Sub message {message_id} detected for "
+                f"plan {plan_id} spec {spec_index}, skipping",
+                extra={
+                    "plan_id": plan_id,
+                    "spec_index": spec_index,
+                    "message_id": message_id,
+                    "correlation_id": correlation_id,
+                    "idempotency_key": "message_id",
+                },
+            )
+            return
 
         # Step 4: Validate ordering for terminal statuses
         # IMPORTANT: Terminal status checks are CASE-SENSITIVE
@@ -884,6 +884,22 @@ def process_spec_status_update(
         else:
             # Intermediate/non-terminal status - update stage and detailed_status fields
             # but keep main status unchanged
+            # Safety check: ensure status is truly non-terminal
+            if status in TERMINAL_STATUSES:
+                logger.error(
+                    f"Terminal status {status} reached non-terminal branch for spec {spec_index} "
+                    f"in plan {plan_id}. This indicates a logic error.",
+                    extra={
+                        "plan_id": plan_id,
+                        "spec_index": spec_index,
+                        "status": status,
+                        "current_spec_status": current_spec_status,
+                    },
+                )
+                result["action"] = "error"
+                result["message"] = f"Logic error: terminal status {status} in non-terminal branch"
+                return
+
             if stage:
                 spec_updates["current_stage"] = stage
             # Store the non-terminal status value in detailed_status field
@@ -892,16 +908,19 @@ def process_spec_status_update(
                 f"Spec {spec_index} non-terminal update: status={status}, "
                 f"stage={stage if stage else 'none'}"
             )
+            log_extra = {
+                "plan_id": plan_id,
+                "spec_index": spec_index,
+                "status": status,
+                "is_terminal": False,
+                "event_type": "non_terminal_update",
+            }
+            if stage:
+                log_extra["stage"] = stage
+
             logger.info(
                 f"Non-terminal status update for spec {spec_index} in plan {plan_id}",
-                extra={
-                    "plan_id": plan_id,
-                    "spec_index": spec_index,
-                    "status": status,
-                    "stage": stage,
-                    "is_terminal": False,
-                    "event_type": "non_terminal_update",
-                },
+                extra=log_extra,
             )
 
         # Step 7: Write updates

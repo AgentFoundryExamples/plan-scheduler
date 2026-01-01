@@ -402,6 +402,118 @@ class TestDetailedStatusField:
         assert "current_stage" not in spec_updates  # Should not be set when stage is None
 
 
+class TestOutOfOrderEvents:
+    """Test handling of out-of-order events and terminal status protection."""
+
+    @pytest.fixture
+    def mock_firestore_client(self):
+        """Create a mock Firestore client."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_transactional(self):
+        """Mock the transactional decorator to execute immediately."""
+
+        def decorator(func):
+            def wrapper(transaction):
+                return func(transaction)
+
+            return wrapper
+
+        return decorator
+
+    def test_non_terminal_status_does_not_overwrite_terminal_status(
+        self, mock_firestore_client, mock_transactional
+    ):
+        """Test that non-terminal status arriving after terminal status doesn't overwrite it."""
+        plan_id = str(uuid.uuid4())
+
+        # Mock plan and spec that is already in terminal "finished" state
+        mock_plan_snapshot = MagicMock()
+        mock_plan_snapshot.exists = True
+        mock_plan_snapshot.to_dict.return_value = {
+            "plan_id": plan_id,
+            "overall_status": "running",
+            "completed_specs": 1,
+            "total_specs": 2,
+            "current_spec_index": 1,
+        }
+
+        mock_spec_snapshot = MagicMock()
+        mock_spec_snapshot.exists = True
+        mock_spec_snapshot.to_dict.return_value = {
+            "spec_index": 0,
+            "status": "finished",  # Already terminal
+            "history": [
+                {
+                    "timestamp": "2025-01-01T12:00:00Z",
+                    "received_status": "finished",
+                    "correlation_id": "finish-123",
+                    "message_id": "msg-finished",
+                }
+            ],
+        }
+
+        mock_plan_ref = MagicMock()
+        mock_plan_ref.get.return_value = mock_plan_snapshot
+        mock_plan_ref.update = MagicMock()
+
+        mock_spec_ref = MagicMock()
+        mock_spec_ref.get.return_value = mock_spec_snapshot
+        mock_spec_ref.update = MagicMock()
+
+        mock_plan_ref.collection.return_value.document.return_value = mock_spec_ref
+        mock_firestore_client.collection.return_value.document.return_value = mock_plan_ref
+
+        # Track transaction updates
+        transaction_updates = {}
+
+        def mock_transaction_update(ref, updates):
+            transaction_updates[ref] = updates
+
+        mock_transaction = MagicMock()
+        mock_transaction.update = mock_transaction_update
+
+        def mock_decorator(func):
+            def wrapper(transaction):
+                return func(mock_transaction)
+
+            return wrapper
+
+        with patch("app.services.firestore_service.firestore.transactional", mock_decorator):
+            result = process_spec_status_update(
+                plan_id=plan_id,
+                spec_index=0,
+                status="processing",  # Non-terminal status arriving late
+                stage="analysis",
+                message_id="test-msg-late",
+                correlation_id="late-update-123",
+                raw_payload_snippet={},
+                client=mock_firestore_client,
+            )
+
+        # Verify the update was accepted (history recorded) but terminal status preserved
+        assert result["success"] is True
+        assert result["action"] == "updated"
+
+        # Verify spec updates were made
+        spec_updates = transaction_updates.get(mock_spec_ref)
+        assert spec_updates is not None
+
+        # Critical: Verify the main status field was NOT updated (terminal status preserved)
+        assert (
+            "status" not in spec_updates
+        ), "Main status should not be updated for non-terminal events"
+
+        # Verify detailed_status and stage were updated
+        assert spec_updates["detailed_status"] == "processing"
+        assert spec_updates["current_stage"] == "analysis"
+
+        # Verify history was updated (should include the new entry)
+        assert "history" in spec_updates
+        assert len(spec_updates["history"]) == 2  # Original + new entry
+
+
 class TestStructuredLogging:
     """Test structured logging for terminal vs non-terminal events."""
 
