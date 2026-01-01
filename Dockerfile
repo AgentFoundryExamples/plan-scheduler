@@ -40,12 +40,16 @@ WORKDIR /app
 
 # Create non-root user and group with configurable UID/GID for security
 # Using default UID/GID 1000, but configurable via build args
-# Check if user/group already exist before creating to avoid conflicts
-RUN if ! getent group appuser >/dev/null 2>&1; then \
+# Check if UID/GID already exist before creating to avoid conflicts
+RUN if ! getent group ${APP_GID} >/dev/null 2>&1; then \
         groupadd -r -g ${APP_GID} appuser; \
+    elif [ "$(getent group ${APP_GID} | cut -d: -f1)" != "appuser" ]; then \
+        echo "Warning: GID ${APP_GID} already exists with a different name, using existing group"; \
     fi && \
-    if ! getent passwd appuser >/dev/null 2>&1; then \
-        useradd -r -u ${APP_UID} -g appuser -s /sbin/nologin -c "Application user" appuser; \
+    if ! getent passwd ${APP_UID} >/dev/null 2>&1; then \
+        useradd -r -u ${APP_UID} -g ${APP_GID} -s /sbin/nologin -c "Application user" appuser; \
+    elif [ "$(getent passwd ${APP_UID} | cut -d: -f1)" != "appuser" ]; then \
+        echo "Warning: UID ${APP_UID} already exists with a different name, using existing user"; \
     fi
 
 # Copy requirements.txt from the builder stage
