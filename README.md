@@ -12,6 +12,13 @@ FastAPI service for plan scheduling with Firestore integration and Pub/Sub suppo
 - Poetry for dependency management
 - Comprehensive test coverage
 
+## Documentation
+
+- **[Cloud Run Deployment Guide](docs/cloud-run.md)** - Complete guide for deploying to Google Cloud Run, including environment configuration, Pub/Sub setup, IAM roles, and security best practices
+- **[Manual End-to-End Testing](docs/manual-e2e.md)** - Step-by-step instructions for manual testing, simulating Pub/Sub payloads, monitoring logs, and troubleshooting
+- **[API Reference](#api-endpoints)** - Detailed API endpoint documentation (see below)
+- **[Environment Variables Reference](#environment-variables)** - Complete list of configuration options (see below)
+
 ## Prerequisites
 
 - Python 3.12 or higher
@@ -110,6 +117,17 @@ poetry run pytest tests/test_health.py
 # Run with verbose output
 poetry run pytest -v
 ```
+
+**📖 For manual end-to-end testing instructions, see the [Manual E2E Testing Guide](docs/manual-e2e.md).**
+
+The manual testing guide covers:
+- Complete end-to-end test scenarios
+- Simulating Pub/Sub push payloads manually
+- Monitoring logs and observing state transitions
+- Verifying plan completion
+- Testing failure modes and error handling
+- Troubleshooting common issues
+- Automated test script for CI/CD
 
 ## Makefile Commands
 
@@ -1146,6 +1164,8 @@ print(f"Status: {response.status_code}")
 
 To configure a Pub/Sub push subscription to call this endpoint:
 
+**📖 For complete Pub/Sub configuration including IAM setup and OIDC authentication, see the [Cloud Run Deployment Guide - Pub/Sub Configuration](docs/cloud-run.md#pubsub-push-subscription-configuration).**
+
 **Quick Setup with Token Authentication:**
 
 ```bash
@@ -1695,6 +1715,22 @@ For full spec details, use the appropriate spec detail endpoint (if available) o
 ## Cloud Run Deployment
 
 This service is designed to run on Google Cloud Run. The Dockerfile and application configuration are optimized for Cloud Run deployment with security best practices.
+
+**📖 For complete deployment instructions, see the [Cloud Run Deployment Guide](docs/cloud-run.md).**
+
+The deployment guide covers:
+- Environment variable configuration and descriptions
+- Building and pushing container images
+- Step-by-step deployment with gcloud commands
+- Pub/Sub push subscription setup with IAM roles
+- OIDC and shared token authentication methods
+- Recommended Cloud Run settings (memory, CPU, concurrency, scaling)
+- Security best practices and token rotation
+- Monitoring, logging, and troubleshooting
+
+### Quick Start
+
+For a quick deployment overview, see the sections below. For production deployments, refer to the [detailed guide](docs/cloud-run.md).
 
 ### Cloud Run Features
 
