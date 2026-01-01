@@ -160,6 +160,20 @@
     },
     {
       "type": "directory",
+      "name": "docs",
+      "children": [
+        {
+          "type": "file",
+          "name": "cloud-run.md"
+        },
+        {
+          "type": "file",
+          "name": "manual-e2e.md"
+        }
+      ]
+    },
+    {
+      "type": "directory",
       "name": "tests",
       "children": [
         {
@@ -263,6 +277,10 @@
     {
       "type": "file",
       "name": "README.md"
+    },
+    {
+      "type": "file",
+      "name": "test-e2e.sh"
     }
   ]
 }

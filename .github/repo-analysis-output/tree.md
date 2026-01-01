@@ -35,6 +35,9 @@
   ├── config.py
   ├── dependencies.py
   └── main.py
+├── docs
+  ├── cloud-run.md
+  └── manual-e2e.md
 ├── tests
   ├── __init__.py
   ├── conftest.py
@@ -60,4 +63,5 @@
 ├── Makefile
 ├── poetry.lock
 ├── pyproject.toml
-└── README.md
+├── README.md
+└── test-e2e.sh
