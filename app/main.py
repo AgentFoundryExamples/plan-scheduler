@@ -15,13 +15,52 @@
 
 import logging
 import sys
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pythonjsonlogger.json import JsonFormatter
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api import health, plans, pubsub
 from app.config import get_settings
+
+
+class RequestCorrelationMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to add request correlation IDs to all requests.
+
+    Extracts or generates a unique request ID and makes it available
+    in the request state for logging and tracing purposes.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        """Process request and add correlation ID."""
+        # Extract X-Request-ID from headers or generate a new one
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+
+        # Store in request state for access in route handlers
+        request.state.request_id = request_id
+
+        # Add to logging context
+        logger = logging.getLogger(__name__)
+        old_factory = logging.getLogRecordFactory()
+
+        def record_factory(*args, **kwargs):
+            record = old_factory(*args, **kwargs)
+            record.request_id = request_id
+            return record
+
+        logging.setLogRecordFactory(record_factory)
+
+        try:
+            response = await call_next(request)
+            # Add request ID to response headers for tracing
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            # Restore original factory
+            logging.setLogRecordFactory(old_factory)
 
 
 def setup_logging() -> None:
@@ -29,9 +68,13 @@ def setup_logging() -> None:
     Configure JSON-structured logging for the application.
 
     Sets up a JSON formatter that includes timestamp, level, message,
-    and service name for all log entries.
+    service name, and request context fields for all log entries.
+    Uses LOG_LEVEL from configuration with fallback to INFO.
     """
     settings = get_settings()
+
+    # Map string log level to logging constant
+    log_level = getattr(logging, settings.LOG_LEVEL, logging.INFO)
 
     # Create JSON formatter with custom format
     class CustomJsonFormatter(JsonFormatter):
@@ -41,6 +84,9 @@ def setup_logging() -> None:
             """Add custom fields to log records."""
             super().add_fields(log_record, record, message_dict)
             log_record["service"] = settings.SERVICE_NAME
+            # Add request_id if available
+            if hasattr(record, "request_id"):
+                log_record["request_id"] = record.request_id
 
         def format(self, record):
             """Format log record, handling unicode and binary payloads gracefully."""
@@ -59,7 +105,7 @@ def setup_logging() -> None:
 
     # Configure root logger
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(log_level)
 
     # Remove existing handlers to avoid duplicates
     for handler in root_logger.handlers[:]:
@@ -67,7 +113,7 @@ def setup_logging() -> None:
 
     # Create console handler with JSON formatter
     handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
+    handler.setLevel(log_level)
 
     formatter = CustomJsonFormatter(
         fmt="%(timestamp)s %(levelname)s %(name)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S"
@@ -76,7 +122,9 @@ def setup_logging() -> None:
     root_logger.addHandler(handler)
 
     # Log startup
-    root_logger.info(f"Logging configured for service: {settings.SERVICE_NAME}")
+    root_logger.info(
+        f"Logging configured for service: {settings.SERVICE_NAME}, level: {settings.LOG_LEVEL}"
+    )
 
 
 @asynccontextmanager
@@ -116,12 +164,18 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
     )
 
+    # Add request correlation middleware
+    app.add_middleware(RequestCorrelationMiddleware)
+
     # Include routers
     app.include_router(health.router)
     app.include_router(plans.router)
     app.include_router(pubsub.router)
 
-    logger.info(f"Application created: service={settings.SERVICE_NAME}, " f"port={settings.PORT}")
+    logger.info(
+        f"Application created: service={settings.SERVICE_NAME}, "
+        f"port={settings.PORT}, workers={settings.WORKERS}, log_level={settings.LOG_LEVEL}"
+    )
 
     return app
 
