@@ -1283,3 +1283,272 @@ def test_get_plan_status_with_stage_from_pubsub_updates(client):
         assert data["specs"][0]["stage"] == "completed"
         assert data["specs"][1]["stage"] == "implementation"
         assert data["specs"][2]["stage"] is None
+
+
+class TestUnifiedStatusWorkflowPlanAPI:
+    """Test unified status workflow via Plans API (current_stage visibility)."""
+
+    def test_get_plan_status_shows_current_stage_from_non_terminal_updates(self, client):
+        """Test that GET /plans/{plan_id} exposes current_stage from intermediate updates."""
+        from datetime import UTC, datetime
+        from unittest.mock import MagicMock
+
+        plan_id = str(uuid.uuid4())
+
+        plan_data = {
+            "plan_id": plan_id,
+            "overall_status": "running",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "total_specs": 3,
+            "completed_specs": 1,
+            "current_spec_index": 1,
+            "last_event_at": datetime.now(UTC),
+            "raw_request": {},
+        }
+
+        # Specs with current_stage showing progression of non-terminal updates
+        spec_data_list = [
+            {
+                "spec_index": 0,
+                "purpose": "Spec 0",
+                "vision": "Vision 0",
+                "must": [],
+                "dont": [],
+                "nice": [],
+                "assumptions": [],
+                "status": "finished",
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
+                "current_stage": "completed",  # Last stage before terminal
+                "history": [
+                    {
+                        "timestamp": "2025-01-01T10:00:00Z",
+                        "received_status": "running",
+                        "stage": "initialization",
+                        "message_id": "msg-1",
+                    },
+                    {
+                        "timestamp": "2025-01-01T10:05:00Z",
+                        "received_status": "running",
+                        "stage": "implementation",
+                        "message_id": "msg-2",
+                    },
+                    {
+                        "timestamp": "2025-01-01T10:10:00Z",
+                        "received_status": "running",
+                        "stage": "completed",
+                        "message_id": "msg-3",
+                    },
+                    {
+                        "timestamp": "2025-01-01T10:15:00Z",
+                        "received_status": "finished",
+                        "stage": "completed",
+                        "message_id": "msg-4",
+                    },
+                ],
+            },
+            {
+                "spec_index": 1,
+                "purpose": "Spec 1",
+                "vision": "Vision 1",
+                "must": [],
+                "dont": [],
+                "nice": [],
+                "assumptions": [],
+                "status": "running",
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
+                "current_stage": "testing",  # Current non-terminal stage
+                "history": [
+                    {
+                        "timestamp": "2025-01-01T10:20:00Z",
+                        "received_status": "running",
+                        "stage": "initialization",
+                        "message_id": "msg-5",
+                    },
+                    {
+                        "timestamp": "2025-01-01T10:25:00Z",
+                        "received_status": "running",
+                        "stage": "testing",
+                        "message_id": "msg-6",
+                    },
+                ],
+            },
+            {
+                "spec_index": 2,
+                "purpose": "Spec 2",
+                "vision": "Vision 2",
+                "must": [],
+                "dont": [],
+                "nice": [],
+                "assumptions": [],
+                "status": "blocked",
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
+                "current_stage": None,  # No updates yet
+                "history": [],
+            },
+        ]
+
+        with (
+            patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+            patch("app.api.plans.get_firestore_client") as mock_client,
+        ):
+            mock_get_plan.return_value = (plan_data, spec_data_list)
+            mock_client.return_value = MagicMock()
+
+            response = client.get(f"/plans/{plan_id}")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # NOTE: This test verifies the Plans API correctly exposes current_stage
+            # from Firestore data. The actual derivation/update of current_stage from
+            # history is tested in test_firestore_service.py. Here we verify the API
+            # correctly returns the current_stage field that was set by the service layer.
+
+            # Verify finished spec shows final current_stage
+            assert data["specs"][0]["spec_index"] == 0
+            assert data["specs"][0]["status"] == "finished"
+            assert data["specs"][0]["stage"] == "completed"
+
+            # Verify running spec shows latest non-terminal stage
+            assert data["specs"][1]["spec_index"] == 1
+            assert data["specs"][1]["status"] == "running"
+            assert data["specs"][1]["stage"] == "testing"
+
+            # Verify blocked spec has no stage
+            assert data["specs"][2]["spec_index"] == 2
+            assert data["specs"][2]["status"] == "blocked"
+            assert data["specs"][2]["stage"] is None
+
+    def test_get_plan_status_current_stage_persists_after_terminal(self, client):
+        """Test that current_stage remains visible after terminal status."""
+        from datetime import UTC, datetime
+        from unittest.mock import MagicMock
+
+        plan_id = str(uuid.uuid4())
+
+        plan_data = {
+            "plan_id": plan_id,
+            "overall_status": "finished",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "total_specs": 1,
+            "completed_specs": 1,
+            "current_spec_index": None,
+            "last_event_at": datetime.now(UTC),
+            "raw_request": {},
+        }
+
+        # Single finished spec with current_stage set
+        spec_data_list = [
+            {
+                "spec_index": 0,
+                "purpose": "Spec 0",
+                "vision": "Vision 0",
+                "must": [],
+                "dont": [],
+                "nice": [],
+                "assumptions": [],
+                "status": "finished",
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
+                "current_stage": "deployment",  # Stage from last non-terminal update
+                "history": [
+                    {
+                        "timestamp": "2025-01-01T10:00:00Z",
+                        "received_status": "running",
+                        "stage": "initialization",
+                        "message_id": "msg-1",
+                    },
+                    {
+                        "timestamp": "2025-01-01T10:05:00Z",
+                        "received_status": "running",
+                        "stage": "deployment",
+                        "message_id": "msg-2",
+                    },
+                    {
+                        "timestamp": "2025-01-01T10:10:00Z",
+                        "received_status": "finished",
+                        "stage": "deployment",
+                        "message_id": "msg-3",
+                    },
+                ],
+            },
+        ]
+
+        with (
+            patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+            patch("app.api.plans.get_firestore_client") as mock_client,
+        ):
+            mock_get_plan.return_value = (plan_data, spec_data_list)
+            mock_client.return_value = MagicMock()
+
+            response = client.get(f"/plans/{plan_id}")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Verify plan is finished
+            assert data["overall_status"] == "finished"
+            assert data["completed_specs"] == 1
+            assert data["current_spec_index"] is None
+
+            # Verify spec is finished but stage is still visible
+            assert data["specs"][0]["status"] == "finished"
+            assert data["specs"][0]["stage"] == "deployment"
+
+    def test_get_plan_status_without_history_has_no_stage(self, client):
+        """Test that specs without any status updates have no current_stage."""
+        from datetime import UTC, datetime
+        from unittest.mock import MagicMock
+
+        plan_id = str(uuid.uuid4())
+
+        plan_data = {
+            "plan_id": plan_id,
+            "overall_status": "running",
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+            "total_specs": 1,
+            "completed_specs": 0,
+            "current_spec_index": 0,
+            "last_event_at": datetime.now(UTC),
+            "raw_request": {},
+        }
+
+        # Spec with no history (no Pub/Sub updates received yet)
+        spec_data_list = [
+            {
+                "spec_index": 0,
+                "purpose": "Spec 0",
+                "vision": "Vision 0",
+                "must": [],
+                "dont": [],
+                "nice": [],
+                "assumptions": [],
+                "status": "running",
+                "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
+                "current_stage": None,
+                "history": [],
+            },
+        ]
+
+        with (
+            patch("app.api.plans.get_plan_with_specs") as mock_get_plan,
+            patch("app.api.plans.get_firestore_client") as mock_client,
+        ):
+            mock_get_plan.return_value = (plan_data, spec_data_list)
+            mock_client.return_value = MagicMock()
+
+            response = client.get(f"/plans/{plan_id}")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Verify spec has running status but no stage
+            assert data["specs"][0]["status"] == "running"
+            assert data["specs"][0]["stage"] is None
