@@ -281,6 +281,8 @@
       "type": "file",
       "external_dependencies": {
         "stdlib": [
+          "datetime.UTC",
+          "datetime.datetime",
           "logging",
           "unittest.mock.MagicMock",
           "unittest.mock.patch",
@@ -289,6 +291,7 @@
         "third-party": [
           "google.api_core.exceptions",
           "google.auth.exceptions",
+          "google.cloud.firestore",
           "pytest"
         ]
       }
