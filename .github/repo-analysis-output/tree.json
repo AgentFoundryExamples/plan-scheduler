@@ -142,6 +142,10 @@
         },
         {
           "type": "file",
+          "name": "auth.py"
+        },
+        {
+          "type": "file",
           "name": "config.py"
         },
         {
@@ -165,6 +169,10 @@
         {
           "type": "file",
           "name": "conftest.py"
+        },
+        {
+          "type": "file",
+          "name": "test_auth.py"
         },
         {
           "type": "file",

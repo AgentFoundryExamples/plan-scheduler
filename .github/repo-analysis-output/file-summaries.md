@@ -4,7 +4,7 @@ Heuristic summaries of source files based on filenames, extensions, and paths.
 
 Schema Version: 2.0
 
-Total files: 28
+Total files: 30
 
 ## app/__init__.py
 **Language:** Python  
@@ -47,8 +47,17 @@ Total files: 28
 **Role:** implementation  
 **Role Justification:** general implementation file (default classification)  
 **Summary:** Python module for pubsub  
-**Size:** 10.38 KB  
-**LOC:** 241  
+**Size:** 16.05 KB  
+**LOC:** 348  
+**TODOs/FIXMEs:** 0  
+
+## app/auth.py
+**Language:** Python  
+**Role:** implementation  
+**Role Justification:** general implementation file (default classification)  
+**Summary:** Python module for auth  
+**Size:** 6.86 KB  
+**LOC:** 129  
 **TODOs/FIXMEs:** 0  
 
 ## app/config.py
@@ -56,8 +65,8 @@ Total files: 28
 **Role:** configuration  
 **Role Justification:** configuration file name 'config'  
 **Summary:** Python configuration file (role: configuration)  
-**Size:** 5.13 KB  
-**LOC:** 102  
+**Size:** 7.29 KB  
+**LOC:** 142  
 **TODOs/FIXMEs:** 0  
 
 ## app/dependencies.py
@@ -150,13 +159,22 @@ Total files: 28
 **LOC:** 4  
 **TODOs/FIXMEs:** 0  
 
+## tests/test_auth.py
+**Language:** Python  
+**Role:** test  
+**Role Justification:** filename starts with 'test_'  
+**Summary:** Python test file (role: test)  
+**Size:** 8.56 KB  
+**LOC:** 168  
+**TODOs/FIXMEs:** 0  
+
 ## tests/test_config.py
 **Language:** Python  
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 12.60 KB  
-**LOC:** 272  
+**Size:** 13.30 KB  
+**LOC:** 298  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_dependencies.py
@@ -227,8 +245,8 @@ Total files: 28
 **Role:** test  
 **Role Justification:** filename starts with 'test_'  
 **Summary:** Python test file (role: test)  
-**Size:** 27.49 KB  
-**LOC:** 658  
+**Size:** 38.64 KB  
+**LOC:** 912  
 **TODOs/FIXMEs:** 0  
 
 ## tests/test_pubsub_models.py

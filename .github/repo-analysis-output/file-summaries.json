@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "total_files": 28,
+  "total_files": 30,
   "files": [
     {
       "schema_version": "2.0",
@@ -67,8 +67,22 @@
       "summary": "Python module for pubsub",
       "summary_text": "Python module for pubsub",
       "metrics": {
-        "size_bytes": 10631,
-        "loc": 241,
+        "size_bytes": 16434,
+        "loc": 348,
+        "todo_count": 0
+      }
+    },
+    {
+      "schema_version": "2.0",
+      "path": "app/auth.py",
+      "language": "Python",
+      "role": "implementation",
+      "role_justification": "general implementation file (default classification)",
+      "summary": "Python module for auth",
+      "summary_text": "Python module for auth",
+      "metrics": {
+        "size_bytes": 7028,
+        "loc": 129,
         "todo_count": 0
       }
     },
@@ -81,8 +95,8 @@
       "summary": "Python configuration file (role: configuration)",
       "summary_text": "Python configuration file (role: configuration)",
       "metrics": {
-        "size_bytes": 5255,
-        "loc": 102,
+        "size_bytes": 7463,
+        "loc": 142,
         "todo_count": 0
       }
     },
@@ -228,6 +242,20 @@
     },
     {
       "schema_version": "2.0",
+      "path": "tests/test_auth.py",
+      "language": "Python",
+      "role": "test",
+      "role_justification": "filename starts with 'test_'",
+      "summary": "Python test file (role: test)",
+      "summary_text": "Python test file (role: test)",
+      "metrics": {
+        "size_bytes": 8766,
+        "loc": 168,
+        "todo_count": 0
+      }
+    },
+    {
+      "schema_version": "2.0",
       "path": "tests/test_config.py",
       "language": "Python",
       "role": "test",
@@ -235,8 +263,8 @@
       "summary": "Python test file (role: test)",
       "summary_text": "Python test file (role: test)",
       "metrics": {
-        "size_bytes": 12905,
-        "loc": 272,
+        "size_bytes": 13622,
+        "loc": 298,
         "todo_count": 0
       }
     },
@@ -347,8 +375,8 @@
       "summary": "Python test file (role: test)",
       "summary_text": "Python test file (role: test)",
       "metrics": {
-        "size_bytes": 28147,
-        "loc": 658,
+        "size_bytes": 39566,
+        "loc": 912,
         "todo_count": 0
       }
     },

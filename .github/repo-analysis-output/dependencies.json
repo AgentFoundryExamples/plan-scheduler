@@ -71,6 +71,21 @@
       }
     },
     {
+      "id": "app/auth.py",
+      "path": "app/auth.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "logging",
+          "typing.Any"
+        ],
+        "third-party": [
+          "google.auth.exceptions.GoogleAuthError",
+          "google.auth.jwt"
+        ]
+      }
+    },
+    {
       "id": "app/config.py",
       "path": "app/config.py",
       "type": "file",
@@ -232,6 +247,21 @@
           "os"
         ],
         "third-party": []
+      }
+    },
+    {
+      "id": "tests/test_auth.py",
+      "path": "tests/test_auth.py",
+      "type": "file",
+      "external_dependencies": {
+        "stdlib": [
+          "time",
+          "unittest.mock.patch"
+        ],
+        "third-party": [
+          "google.auth.exceptions.InvalidValue",
+          "pytest"
+        ]
       }
     },
     {
@@ -458,6 +488,10 @@
     },
     {
       "source": "app/api/pubsub.py",
+      "target": "app/auth.py"
+    },
+    {
+      "source": "app/api/pubsub.py",
       "target": "app/config.py"
     },
     {
@@ -537,6 +571,10 @@
       "target": "app/models/pubsub.py"
     },
     {
+      "source": "tests/test_auth.py",
+      "target": "app/auth.py"
+    },
+    {
       "source": "tests/test_config.py",
       "target": "app/config.py"
     },
@@ -613,6 +651,10 @@
       "target": "app/models/plan.py"
     },
     {
+      "source": "tests/test_pubsub_api.py",
+      "target": "app/auth.py"
+    },
+    {
       "source": "tests/test_pubsub_models.py",
       "target": "app/models/pubsub.py"
     },
@@ -640,6 +682,7 @@
       "os",
       "secrets",
       "sys",
+      "time",
       "typing.Any",
       "unittest.mock.MagicMock",
       "unittest.mock.patch",
@@ -659,6 +702,9 @@
       "fastapi.testclient.TestClient",
       "google.api_core.exceptions",
       "google.auth.exceptions",
+      "google.auth.exceptions.GoogleAuthError",
+      "google.auth.exceptions.InvalidValue",
+      "google.auth.jwt",
       "google.cloud.firestore",
       "pydantic.BaseModel",
       "pydantic.Field",
@@ -671,7 +717,7 @@
       "pythonjsonlogger.json.JsonFormatter",
       "starlette.middleware.base.BaseHTTPMiddleware"
     ],
-    "stdlib_count": 19,
-    "third-party_count": 22
+    "stdlib_count": 20,
+    "third-party_count": 25
   }
 }

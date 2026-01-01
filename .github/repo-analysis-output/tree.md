@@ -31,12 +31,14 @@
     ├── execution_service.py
     └── firestore_service.py
   ├── __init__.py
+  ├── auth.py
   ├── config.py
   ├── dependencies.py
   └── main.py
 ├── tests
   ├── __init__.py
   ├── conftest.py
+  ├── test_auth.py
   ├── test_config.py
   ├── test_dependencies.py
   ├── test_execution_service.py
