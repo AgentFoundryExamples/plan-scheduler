@@ -237,6 +237,25 @@ class TestDetailedStatusField:
 
         return decorator
 
+    @pytest.fixture
+    def mock_transaction_with_tracking(self):
+        """Create a mock transaction that tracks updates."""
+        transaction_updates = {}
+
+        def mock_transaction_update(ref, updates):
+            transaction_updates[ref] = updates
+
+        mock_transaction = MagicMock()
+        mock_transaction.update = mock_transaction_update
+
+        def mock_decorator(func):
+            def wrapper(transaction):
+                return func(mock_transaction)
+
+            return wrapper
+
+        return mock_decorator, transaction_updates
+
     def test_non_terminal_status_updates_detailed_status_field(
         self, mock_firestore_client, mock_transactional
     ):
@@ -311,7 +330,7 @@ class TestDetailedStatusField:
         assert spec_updates["detailed_status"] == "implementing"
         assert spec_updates["current_stage"] == "code_generation"
         # Main status should not be updated for non-terminal statuses
-        assert "status" not in spec_updates or spec_updates.get("status") == "running"
+        assert "status" not in spec_updates
 
     def test_non_terminal_status_without_stage(self, mock_firestore_client, mock_transactional):
         """Test non-terminal status update without stage field."""

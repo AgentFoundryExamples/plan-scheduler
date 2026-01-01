@@ -878,12 +878,13 @@ When a spec needs to be retried manually:
 
 The endpoint implements robust idempotency and ordering guarantees to ensure reliable operation:
 
-**Deduplication via messageId:**
-1. Every Pub/Sub message includes a unique `messageId` assigned by Pub/Sub
-2. The service stores `messageId` in the spec's history for each processed update
-3. If a message with the same `messageId` is received again (Pub/Sub retry), it is detected and skipped
-4. Returns 204 No Content for duplicate messages (idempotent success response)
-5. Clients can safely retry failed requests - the service will detect and ignore duplicates
+**Enhanced Idempotency (Dual-Key Deduplication):**
+1. **Primary: correlation_id** - When provided by external systems, `correlation_id` serves as the primary idempotency key. This allows external systems to ensure exactly-once processing of business events across message retries.
+2. **Fallback: message_id** - Every Pub/Sub message includes a unique `messageId` assigned by Pub/Sub. When no `correlation_id` is provided, the service uses `messageId` for deduplication.
+3. The service stores both `correlation_id` and `messageId` in the spec's history for each processed update.
+4. During duplicate detection, `correlation_id` is checked first (if provided), then `messageId`.
+5. If a duplicate is detected via either key, the service returns 204 No Content (idempotent success response).
+6. Clients can safely retry failed requests - the service will detect and ignore duplicates.
 
 **Terminal Status Protection:**
 - Prevents duplicate terminal statuses (e.g., finishing a spec that's already finished)
@@ -903,9 +904,18 @@ The endpoint implements robust idempotency and ordering guarantees to ensure rel
   - ISO 8601 timestamp
   - Received status and stage values
   - Pub/Sub messageId for deduplication
+  - Correlation ID for cross-system tracing (when provided)
   - Raw payload snippet (first 1000 chars) for debugging
 - History is append-only and provides full audit trail
 - Use history to diagnose issues, track retry attempts, and understand state transitions
+
+**Observability:**
+The service provides structured logging with event classification for monitoring:
+- **Terminal Events**: Logs include `is_terminal: true` and `event_type` (e.g., `terminal_spec_finished`, `terminal_plan_finished`, `terminal_spec_failed`)
+- **Non-Terminal Events**: Logs include `is_terminal: false` and `event_type: non_terminal_update`
+- **Idempotency Events**: Logs include `idempotency_key` indicating which key was used (`correlation_id` or `message_id`)
+- All logs include structured metadata: `plan_id`, `spec_index`, `status`, `stage`, `message_id`, `correlation_id`
+- Use logs to monitor execution flow, diagnose issues, and track terminal vs non-terminal event ratios
 
 #### Error Handling
 
@@ -1273,6 +1283,7 @@ plans/{plan_id}/specs/{index}            # Spec subcollection documents
 ├── assumptions: [...]
 ├── status: "running" | "blocked" | "finished" | "failed"
 ├── current_stage: "implementation" | "reviewing" | ...  # Optional, updated by Pub/Sub
+├── detailed_status: "PROCESSING" | custom_status | ...  # Optional, stores non-terminal status values
 ├── created_at: "2025-01-01T12:00:00Z"
 ├── updated_at: "2025-01-01T12:00:00Z"
 └── history: [                          # Status history from Pub/Sub updates
@@ -1280,6 +1291,7 @@ plans/{plan_id}/specs/{index}            # Spec subcollection documents
        "timestamp": "2025-01-01T12:00:00Z",
        "received_status": "running",
        "stage": "implementation",
+       "correlation_id": "session-123",  # Optional, for cross-system tracing
        "message_id": "msg-123",
        "raw_snippet": { ... }
      }
