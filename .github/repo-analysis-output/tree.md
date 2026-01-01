@@ -54,6 +54,7 @@
 ├── .env.example
 ├── .gitignore
 ├── .pre-commit-config.yaml
+├── docker-entrypoint.sh
 ├── Dockerfile
 ├── LICENSE
 ├── Makefile
